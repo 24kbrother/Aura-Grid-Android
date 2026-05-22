@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Aura Grid</string>
+    <string name="app_version">v2.0.0-STABLE</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Aura Grid Companion Settings</string>
+    <string name="server_lan_url">Local LAN Server URL</string>
+    <string name="server_wan_url">Cloud WAN Server URL</string>
+    <string name="save_settings">Save Config</string>
+    
+    <!-- Connection States -->
+    <string name="connecting">Connecting to Aura Grid Service...</string>
+    <string name="connection_failed">Connection Lost</string>
+    <string name="reconnecting">Attempting auto-recovery in 3s...</string>
+    <string name="check_network">Please verify your server address or network connection.</string>
+</resources>

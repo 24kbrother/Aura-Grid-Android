@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- Cyberpunk Industrial Theme Colors -->
+    <color name="bg_obsidian">#0A0B0E</color>
+    <color name="bg_charcoal">#12141C</color>
+    <color name="neon_red">#FF3B30</color>
+    <color name="neon_teal">#00E5FF</color>
+    <color name="neon_gold">#FFD700</color>
+    <color name="neon_green">#34C759</color>
+    
+    <color name="text_primary">#F5F6F8</color>
+    <color name="text_secondary">#8E8E93</color>
+    <color name="glass_card">#221A1A24</color>
+</resources>
