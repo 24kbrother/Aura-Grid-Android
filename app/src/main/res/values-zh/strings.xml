@@ -4,6 +4,7 @@
     
     <!-- Settings Screen -->
     <string name="settings_title">Aura Grid 伴侣端配置</string>
+    <string name="settings_desc">配置服务器路由与运行模式</string>
     <string name="server_lan_url">局域网服务器地址 (Local LAN)</string>
     <string name="server_wan_url">公网服务器地址 (Cloud WAN)</string>
     <string name="username">用户名</string>
@@ -16,6 +17,11 @@
     <string name="lang_en">English</string>
     <string name="cancel">取消</string>
     <string name="save_settings">保存配置</string>
+    <string name="save_anyway">强制保存</string>
+    <string name="verifying_server">正在验证服务器连接和凭据...</string>
+    <string name="verification_success">验证成功！</string>
+    <string name="verification_failed">连接或身份验证失败。请检查输入，或点击“强制保存”跳过。</string>
+    <string name="lan_url_required">局域网地址不能为空</string>
     
     <!-- Connection States -->
     <string name="connecting">正在连接 Aura Grid 服务...</string>

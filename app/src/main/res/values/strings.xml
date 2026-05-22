@@ -4,6 +4,7 @@
     
     <!-- Settings Screen -->
     <string name="settings_title">Aura Grid Companion Settings</string>
+    <string name="settings_desc">Configure server routing and operational modes</string>
     <string name="server_lan_url">Local LAN Server URL</string>
     <string name="server_wan_url">Cloud WAN Server URL</string>
     <string name="username">Username</string>
@@ -16,6 +17,11 @@
     <string name="lang_en">English</string>
     <string name="cancel">Cancel</string>
     <string name="save_settings">Save Config</string>
+    <string name="save_anyway">Save Anyway</string>
+    <string name="verifying_server">Verifying server connection and credentials...</string>
+    <string name="verification_success">Verification successful!</string>
+    <string name="verification_failed">Failed to connect or authenticate. Check your inputs or press \'Save Anyway\' to force save.</string>
+    <string name="lan_url_required">LAN URL is required</string>
     
     <!-- Connection States -->
     <string name="connecting">Connecting to Aura Grid Service...</string>

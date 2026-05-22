@@ -104,6 +104,7 @@
                     android:gravity="center_vertical">
 
                     <TextView
+                        android:id="@+id/txtSettingsTitle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -151,10 +152,11 @@
                 </LinearLayout>
 
                 <TextView
+                    android:id="@+id/txtSettingsDesc"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Configure server routing and operational modes"
+                    android:text="@string/settings_desc"
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
 
@@ -167,6 +169,7 @@
 
                 <!-- LAN Address Input -->
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutLanUrl"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/server_lan_url"
@@ -187,6 +190,7 @@
 
                 <!-- WAN Address Input -->
                 <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/layoutWanUrl"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
@@ -261,6 +265,7 @@
 
                 <!-- Configured Mode Selection -->
                 <TextView
+                    android:id="@+id/txtDeviceModeLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="20dp"

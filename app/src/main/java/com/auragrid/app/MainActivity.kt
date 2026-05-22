@@ -389,17 +389,82 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Helper to load Resources for a specific locale dynamically without restarting the Activity context.
+     */
+    private fun getLocalizedResources(context: Context, localeCode: String): android.content.res.Resources {
+        val locale = java.util.Locale(localeCode)
+        val config = android.content.res.Configuration(context.resources.configuration)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            config.setLocale(locale)
+            context.createConfigurationContext(config).resources
+        } else {
+            @Suppress("DEPRECATION")
+            config.locale = locale
+            @Suppress("DEPRECATION")
+            val res = context.resources
+            @Suppress("DEPRECATION")
+            res.updateConfiguration(config, res.displayMetrics)
+            res
+        }
+    }
+
+    /**
+     * Instantly refreshes all visible strings in the settings overlay matching the specified language code.
+     */
+    private fun applyLanguageToSettingsUI(langCode: String) {
+        val res = getLocalizedResources(this, langCode)
+        
+        binding.txtSettingsTitle.text = res.getString(R.string.settings_title)
+        binding.txtSettingsDesc.text = res.getString(R.string.settings_desc)
+        
+        binding.layoutLanUrl.hint = res.getString(R.string.server_lan_url)
+        binding.layoutWanUrl.hint = res.getString(R.string.server_wan_url)
+        binding.layoutUsername.hint = res.getString(R.string.username)
+        binding.layoutPassword.hint = res.getString(R.string.password)
+        
+        binding.txtDeviceModeLabel.text = res.getString(R.string.device_mode)
+        binding.radioKiosk.text = res.getString(R.string.mode_kiosk)
+        binding.radioCompanion.text = res.getString(R.string.mode_companion)
+        
+        binding.btnCancelSettings.text = res.getString(R.string.cancel)
+        
+        // Handle "Save Config" vs "Save Anyway"
+        val currentBtnText = binding.btnSaveSettings.text.toString()
+        val anywayZH = "强制保存"
+        val anywayEN = "Save Anyway"
+        if (currentBtnText == anywayZH || currentBtnText == anywayEN) {
+            binding.btnSaveSettings.text = res.getString(R.string.save_anyway)
+        } else {
+            binding.btnSaveSettings.text = res.getString(R.string.save_settings)
+        }
+
+        // Translate verification status message on the fly if visible
+        if (binding.txtVerificationStatus.visibility == View.VISIBLE) {
+            val statusText = binding.txtVerificationStatus.text.toString()
+            if (statusText.contains("Verifying") || statusText.contains("正在验证")) {
+                binding.txtVerificationStatus.text = res.getString(R.string.verifying_server)
+            } else if (statusText.contains("successful") || statusText.contains("成功")) {
+                binding.txtVerificationStatus.text = res.getString(R.string.verification_success)
+            } else if (statusText.contains("Failed") || statusText.contains("失败")) {
+                binding.txtVerificationStatus.text = res.getString(R.string.verification_failed)
+            }
+        }
+    }
+
+    /**
      * Binds click events to modal control elements.
      */
     private fun setupControlListeners() {
         binding.btnLangZhToggle.setOnClickListener {
             tempSelectedLang = "zh"
             updateLanguageToggleUI(tempSelectedLang)
+            applyLanguageToSettingsUI(tempSelectedLang)
         }
 
         binding.btnLangEnToggle.setOnClickListener {
             tempSelectedLang = "en"
             updateLanguageToggleUI(tempSelectedLang)
+            applyLanguageToSettingsUI(tempSelectedLang)
         }
 
         binding.btnCancelSettings.setOnClickListener {
@@ -413,14 +478,17 @@ class MainActivity : AppCompatActivity() {
             val passStr = binding.inputPassword.text.toString().trim()
             val isKiosk = binding.radioKiosk.isChecked
             val selectedLang = tempSelectedLang
+            val currentRes = getLocalizedResources(this@MainActivity, selectedLang)
 
             if (lanStr.isEmpty()) {
-                binding.inputLanUrl.error = "LAN URL is required"
+                binding.inputLanUrl.error = currentRes.getString(R.string.lan_url_required)
                 return@setOnClickListener
             }
 
+            val isAnyway = binding.btnSaveSettings.text.toString() == currentRes.getString(R.string.save_anyway)
+
             // If the user chooses to bypass verification or did not enter credentials, save directly
-            if (binding.btnSaveSettings.text == "Save Anyway" || userStr.isEmpty()) {
+            if (isAnyway || userStr.isEmpty()) {
                 saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang)
                 toggleSettingsOverlay(false)
                 return@setOnClickListener
@@ -429,7 +497,7 @@ class MainActivity : AppCompatActivity() {
             // Show verification status loading state
             binding.txtVerificationStatus.visibility = View.VISIBLE
             binding.txtVerificationStatus.setTextColor(Color.parseColor("#00E5FF")) // Cyan color for loading
-            binding.txtVerificationStatus.text = "Verifying server connection and credentials..."
+            binding.txtVerificationStatus.text = currentRes.getString(R.string.verifying_server)
             binding.btnSaveSettings.isEnabled = false
 
             executor.execute {
@@ -445,9 +513,10 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     binding.btnSaveSettings.isEnabled = true
+                    val activeRes = getLocalizedResources(this@MainActivity, tempSelectedLang)
                     if (token != null) {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#00FF66")) // Green for success
-                        binding.txtVerificationStatus.text = "Verification successful!"
+                        binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
                         
                         // Save config with verified token
                         saveConfig(lanStr, wanStr, userStr, passStr, token, isKiosk, selectedLang)
@@ -459,8 +528,8 @@ class MainActivity : AppCompatActivity() {
                         }, 500)
                     } else {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#FF3333")) // Red for error
-                        binding.txtVerificationStatus.text = "Failed to connect or authenticate. Check your inputs or press 'Save Anyway' to force save."
-                        binding.btnSaveSettings.text = "Save Anyway"
+                        binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_failed)
+                        binding.btnSaveSettings.text = activeRes.getString(R.string.save_anyway)
                     }
                 }
             }
@@ -469,7 +538,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleSettingsOverlay(show: Boolean) {
         if (show) {
-            binding.btnSaveSettings.text = getString(R.string.save_settings)
+            applyLanguageToSettingsUI(tempSelectedLang)
             binding.txtVerificationStatus.visibility = View.GONE
             binding.btnCancelSettings.visibility = if (sharedPreferences.getBoolean("is_configured", false)) View.VISIBLE else View.GONE
             
