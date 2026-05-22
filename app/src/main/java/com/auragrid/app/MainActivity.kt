@@ -49,8 +49,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var orchestrator: NotificationOrchestrator
     private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    private var lanUrl = "http://10.0.0.90:3001"
-    private var wanUrl = "https://grid.yourdomain.com"
+    private var lanUrl = ""
+    private var wanUrl = ""
     private var isKioskMode = true
     private var activeUrl = ""
 
@@ -59,13 +59,17 @@ class MainActivity : AppCompatActivity() {
     private val recoveryRunnable = Runnable { attemptAutoRecovery() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Initialize storage first to set the language locale before view creation
+        sharedPreferences = getSharedPreferences("AuraGridPreferences", Context.MODE_PRIVATE)
+        val lang = sharedPreferences.getString("app_language", "zh") ?: "zh"
+        setAppLocale(this, lang)
+
         super.onCreate(savedInstanceState)
         
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 1. Initialize storage and settings
-        sharedPreferences = getSharedPreferences("AuraGridPreferences", Context.MODE_PRIVATE)
+        // Load other configuration values
         loadSavedConfig()
 
         roamingManager = NetworkRoamingManager(this)
@@ -89,7 +93,7 @@ class MainActivity : AppCompatActivity() {
 
         // Check if configuration is set; if not (or if it's default), force showing the Setup screen
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
-        if (!isConfigured || lanUrl == "http://10.0.0.90:3001") {
+        if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
             Log.i("MainActivity", "App not configured or has default dummy URL. Forcing Setup dialog.")
             toggleSettingsOverlay(true)
         } else {
@@ -113,11 +117,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Helper to set language configuration dynamically at runtime.
+     */
+    private fun setAppLocale(context: Context, languageCode: String) {
+        val locale = java.util.Locale(languageCode)
+        java.util.Locale.setDefault(locale)
+        val config = context.resources.configuration
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            config.setLocale(locale)
+        } else {
+            @Suppress("DEPRECATION")
+            config.locale = locale
+        }
+        @Suppress("DEPRECATION")
+        context.resources.updateConfiguration(config, context.resources.displayMetrics)
+    }
+
+    /**
      * Reads saved server configuration from secure local storage.
      */
     private fun loadSavedConfig() {
-        lanUrl = sharedPreferences.getString("server_lan_url", "http://10.0.0.90:3001") ?: "http://10.0.0.90:3001"
-        wanUrl = sharedPreferences.getString("server_wan_url", "https://grid.yourdomain.com") ?: "https://grid.yourdomain.com"
+        lanUrl = sharedPreferences.getString("server_lan_url", "") ?: ""
+        wanUrl = sharedPreferences.getString("server_wan_url", "") ?: ""
         isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
 
         val savedUser = sharedPreferences.getString("auth_user", "") ?: ""
@@ -127,6 +148,13 @@ class MainActivity : AppCompatActivity() {
         binding.inputWanUrl.setText(wanUrl)
         binding.inputUsername.setText(savedUser)
         binding.inputPassword.setText(savedPass)
+
+        val currentLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
+        if (currentLang == "zh") {
+            binding.radioLangZh.isChecked = true
+        } else {
+            binding.radioLangEn.isChecked = true
+        }
 
         if (isKioskMode) {
             binding.radioKiosk.isChecked = true
@@ -138,7 +166,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Commits configuration values to local storage.
      */
-    private fun saveConfig(newLan: String, newWan: String, user: String, pass: String, token: String, newKiosk: Boolean) {
+    private fun saveConfig(newLan: String, newWan: String, user: String, pass: String, token: String, newKiosk: Boolean, newLang: String) {
         lanUrl = newLan
         wanUrl = newWan
         isKioskMode = newKiosk
@@ -150,12 +178,18 @@ class MainActivity : AppCompatActivity() {
             putString("auth_pass", pass)
             putString("auth_token", token)
             putBoolean("is_kiosk_mode", isKioskMode)
+            putString("app_language", newLang)
             putBoolean("is_configured", true)
             apply()
         }
 
+        // Apply new language
+        setAppLocale(this, newLang)
+
         updateScreenLocking()
-        routeAndLoadUrl()
+        
+        // Recreate the activity to apply language changes instantly
+        recreate()
         
         // Restart the WebSocket background monitoring service with the new address
         startAuraServices()
@@ -360,6 +394,7 @@ class MainActivity : AppCompatActivity() {
             val userStr = binding.inputUsername.text.toString().trim()
             val passStr = binding.inputPassword.text.toString().trim()
             val isKiosk = binding.radioKiosk.isChecked
+            val selectedLang = if (binding.radioLangZh.isChecked) "zh" else "en"
 
             if (lanStr.isEmpty()) {
                 binding.inputLanUrl.error = "LAN URL is required"
@@ -368,7 +403,7 @@ class MainActivity : AppCompatActivity() {
 
             // If the user chooses to bypass verification or did not enter credentials, save directly
             if (binding.btnSaveSettings.text == "Save Anyway" || userStr.isEmpty()) {
-                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk)
+                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang)
                 toggleSettingsOverlay(false)
                 return@setOnClickListener
             }
@@ -397,7 +432,7 @@ class MainActivity : AppCompatActivity() {
                         binding.txtVerificationStatus.text = "Verification successful!"
                         
                         // Save config with verified token
-                        saveConfig(lanStr, wanStr, userStr, passStr, token, isKiosk)
+                        saveConfig(lanStr, wanStr, userStr, passStr, token, isKiosk, selectedLang)
                         
                         // Close settings after a small delay
                         binding.txtVerificationStatus.postDelayed({

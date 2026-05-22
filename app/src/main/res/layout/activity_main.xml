@@ -121,13 +121,14 @@
                     android:textColorHint="@color/text_secondary"
                     app:hintTextColor="@color/neon_teal"
                     app:boxStrokeColor="@color/neon_teal"
+                    app:placeholderText="http://10.0.0.90:8125"
+                    app:placeholderTextColor="@color/text_secondary"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/inputLanUrl"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="http://10.0.0.90:3001"
                         android:textColor="@color/text_primary"
                         android:inputType="textUri" />
                 </com.google.android.material.textfield.TextInputLayout>
@@ -141,13 +142,14 @@
                     android:textColorHint="@color/text_secondary"
                     app:hintTextColor="@color/neon_teal"
                     app:boxStrokeColor="@color/neon_teal"
+                    app:placeholderText="https://grid.yourdomain.com"
+                    app:placeholderTextColor="@color/text_secondary"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/inputWanUrl"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="https://grid.yourdomain.com"
                         android:textColor="@color/text_primary"
                         android:inputType="textUri" />
                 </com.google.android.material.textfield.TextInputLayout>
@@ -158,7 +160,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:hint="Username"
+                    android:hint="@string/username"
                     android:textColorHint="@color/text_secondary"
                     app:hintTextColor="@color/neon_teal"
                     app:boxStrokeColor="@color/neon_teal"
@@ -178,7 +180,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:hint="Password"
+                    android:hint="@string/password"
                     android:textColorHint="@color/text_secondary"
                     app:hintTextColor="@color/neon_teal"
                     app:boxStrokeColor="@color/neon_teal"
@@ -210,7 +212,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="20dp"
-                    android:text="Device Work Mode"
+                    android:text="@string/device_mode"
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
 
@@ -225,7 +227,7 @@
                         android:id="@+id/radioKiosk"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Wall Kiosk (Keep Screen On)"
+                        android:text="@string/mode_kiosk"
                         android:textColor="@color/text_primary"
                         android:buttonTint="@color/neon_teal"
                         android:checked="true" />
@@ -235,7 +237,42 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="24dp"
-                        android:text="Companion (Mobile)"
+                        android:text="@string/mode_companion"
+                        android:textColor="@color/text_primary"
+                        android:buttonTint="@color/neon_teal" />
+                </RadioGroup>
+
+                <!-- Configured Language Selection -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/system_language"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <RadioGroup
+                    android:id="@+id/radioGroupLanguage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/radioLangZh"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/lang_zh"
+                        android:textColor="@color/text_primary"
+                        android:buttonTint="@color/neon_teal"
+                        android:checked="true" />
+
+                    <RadioButton
+                        android:id="@+id/radioLangEn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="24dp"
+                        android:text="@string/lang_en"
                         android:textColor="@color/text_primary"
                         android:buttonTint="@color/neon_teal" />
                 </RadioGroup>
@@ -253,7 +290,7 @@
                         style="@style/Widget.MaterialComponents.Button.TextButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Cancel"
+                        android:text="@string/cancel"
                         android:textColor="@color/text_secondary" />
 
                     <Button

@@ -34,6 +34,12 @@ class NetworkRoamingManager(private val context: Context) {
             return
         }
 
+        if (lanUrl.isEmpty()) {
+            Log.d("AuraRoaming", "LAN URL is empty, routing directly to WAN: $wanUrl")
+            callback.onRouteResolved(wanUrl, false)
+            return
+        }
+
         Log.d("AuraRoaming", "Initiating network path resolution...")
         executor.execute {
             val isLanAvailable = testConnection(lanUrl, timeoutMs = 1500)
