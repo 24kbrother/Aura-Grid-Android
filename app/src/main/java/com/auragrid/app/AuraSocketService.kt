@@ -72,6 +72,11 @@ class AuraSocketService : Service() {
      */
     @Synchronized
     private fun connectSocket() {
+        if (serverUrl.isEmpty()) {
+            Log.w("AuraSocketService", "Server URL is empty, skipping Socket.IO connection.")
+            return
+        }
+
         if (mSocket != null && mSocket!!.connected()) {
             return
         }

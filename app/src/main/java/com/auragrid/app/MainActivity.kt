@@ -59,12 +59,12 @@ class MainActivity : AppCompatActivity() {
     private val recoveryRunnable = Runnable { attemptAutoRecovery() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
         // Initialize storage first to set the language locale before view creation
         sharedPreferences = getSharedPreferences("AuraGridPreferences", Context.MODE_PRIVATE)
         val lang = sharedPreferences.getString("app_language", "zh") ?: "zh"
         setAppLocale(this, lang)
-
-        super.onCreate(savedInstanceState)
         
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -125,10 +125,10 @@ class MainActivity : AppCompatActivity() {
         val config = context.resources.configuration
         
         val currentLocale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            config.locales[0]
+            if (!config.locales.isEmpty) config.locales[0] else java.util.Locale.getDefault()
         } else {
             @Suppress("DEPRECATION")
-            config.locale
+            config.locale ?: java.util.Locale.getDefault()
         }
         if (currentLocale.language == languageCode) {
             return
@@ -530,6 +530,12 @@ class MainActivity : AppCompatActivity() {
 
         roamingManager.resolveOptimalRoute(lanUrl, wanUrl, object : NetworkRoamingManager.RoamingCallback {
             override fun onRouteResolved(resolvedUrl: String, isLocal: Boolean) {
+                if (resolvedUrl.isEmpty()) {
+                    Log.e("MainActivity", "Route resolved to empty URL. Aborting WebView load.")
+                    binding.subLoadingText.text = "Error: No server URL configured or reachable."
+                    toggleSettingsOverlay(true)
+                    return
+                }
                 activeUrl = resolvedUrl
                 binding.subLoadingText.text = if (isLocal) "LAN Server online. Launching local profile..." else "WAN Server online. Launching cloud profile..."
                 Log.i("MainActivity", "Optimal route resolved. Loading URL: $activeUrl")
