@@ -97,14 +97,58 @@
                     android:orientation="vertical"
                     android:padding="28dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/settings_title"
-                    android:textColor="@color/neon_teal"
-                    android:textSize="20sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:letterSpacing="0.02" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_title"
+                        android:textColor="@color/neon_teal"
+                        android:textSize="20sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:letterSpacing="0.02" />
+
+                    <!-- Compact Language Switcher Segmented Toggle -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:background="#15FFFFFF"
+                        android:padding="2dp">
+
+                        <TextView
+                            android:id="@+id/btnLangZhToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="中"
+                            android:textColor="@color/black"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:background="@color/neon_teal"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="4dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+
+                        <TextView
+                            android:id="@+id/btnLangEnToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="EN"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:background="@android:color/transparent"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="4dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+                    </LinearLayout>
+                </LinearLayout>
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -250,40 +294,7 @@
                         android:buttonTint="@color/neon_teal" />
                 </RadioGroup>
 
-                <!-- Configured Language Selection -->
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:text="@string/system_language"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
 
-                <RadioGroup
-                    android:id="@+id/radioGroupLanguage"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
-
-                    <RadioButton
-                        android:id="@+id/radioLangZh"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/lang_zh"
-                        android:textColor="@color/text_primary"
-                        android:buttonTint="@color/neon_teal"
-                        android:checked="true" />
-
-                    <RadioButton
-                        android:id="@+id/radioLangEn"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="24dp"
-                        android:text="@string/lang_en"
-                        android:textColor="@color/text_primary"
-                        android:buttonTint="@color/neon_teal" />
-                </RadioGroup>
 
                 <!-- Buttons -->
                 <LinearLayout

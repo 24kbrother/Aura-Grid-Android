@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var wanUrl = ""
     private var isKioskMode = true
     private var activeUrl = ""
+    private var tempSelectedLang = "zh"
 
     private var isErrorState = false
     private val recoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -160,12 +161,8 @@ class MainActivity : AppCompatActivity() {
         binding.inputUsername.setText(savedUser)
         binding.inputPassword.setText(savedPass)
 
-        val currentLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
-        if (currentLang == "zh") {
-            binding.radioLangZh.isChecked = true
-        } else {
-            binding.radioLangEn.isChecked = true
-        }
+        tempSelectedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
+        updateLanguageToggleUI(tempSelectedLang)
 
         if (isKioskMode) {
             binding.radioKiosk.isChecked = true
@@ -395,6 +392,16 @@ class MainActivity : AppCompatActivity() {
      * Binds click events to modal control elements.
      */
     private fun setupControlListeners() {
+        binding.btnLangZhToggle.setOnClickListener {
+            tempSelectedLang = "zh"
+            updateLanguageToggleUI(tempSelectedLang)
+        }
+
+        binding.btnLangEnToggle.setOnClickListener {
+            tempSelectedLang = "en"
+            updateLanguageToggleUI(tempSelectedLang)
+        }
+
         binding.btnCancelSettings.setOnClickListener {
             toggleSettingsOverlay(false)
         }
@@ -405,7 +412,7 @@ class MainActivity : AppCompatActivity() {
             val userStr = binding.inputUsername.text.toString().trim()
             val passStr = binding.inputPassword.text.toString().trim()
             val isKiosk = binding.radioKiosk.isChecked
-            val selectedLang = if (binding.radioLangZh.isChecked) "zh" else "en"
+            val selectedLang = tempSelectedLang
 
             if (lanStr.isEmpty()) {
                 binding.inputLanUrl.error = "LAN URL is required"
@@ -471,6 +478,29 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.settingsOverlay.visibility = View.GONE
             applySystemImmersiveMode()
+        }
+    }
+
+    /**
+     * Updates the segmented capsule language switcher UI toggle states dynamically.
+     */
+    private fun updateLanguageToggleUI(lang: String) {
+        if (lang == "zh") {
+            binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+            binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+            binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+
+            binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+            binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
+        } else {
+            binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+            binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+            binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+            binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+            binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.BOLD)
         }
     }
 
