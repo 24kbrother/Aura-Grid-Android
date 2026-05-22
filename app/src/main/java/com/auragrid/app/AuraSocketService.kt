@@ -60,7 +60,7 @@ class AuraSocketService : Service() {
         return NotificationCompat.Builder(this, NotificationOrchestrator.CHANNEL_SERVICE)
             .setContentTitle("Aura Grid Monitor")
             .setContentText("Listening for real-time smart home alerts...")
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

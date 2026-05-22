@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">Aura Grid</string>
+    <string name="app_version">v2.1.0-OTA</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Aura Grid 伴侣端配置</string>
+    <string name="server_lan_url">局域网服务器地址 (Local LAN)</string>
+    <string name="server_wan_url">公网服务器地址 (Cloud WAN)</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="device_mode">设备工作模式</string>
+    <string name="mode_kiosk">挂墙大屏模式 (屏幕常亮)</string>
+    <string name="mode_companion">手机伴侣模式 (系统息屏)</string>
+    <string name="system_language">系统语言 / System Language</string>
+    <string name="lang_zh">中文 (简体)</string>
+    <string name="lang_en">English</string>
+    <string name="cancel">取消</string>
+    <string name="save_settings">保存配置</string>
+    
+    <!-- Connection States -->
+    <string name="connecting">正在连接 Aura Grid 服务...</string>
+    <string name="connection_failed">连接已断开</string>
+    <string name="reconnecting">正在尝试自动重连 (3秒内)...</string>
+    <string name="check_network">请检查您的服务器配置或网络连接状态。</string>
+    
+    <!-- OTA Upgrade Screen -->
+    <string name="system_upgrade">系统升级</string>
+    <string name="downloading_update">正在下载 Aura Grid Kiosk 升级包...</string>
+</resources>

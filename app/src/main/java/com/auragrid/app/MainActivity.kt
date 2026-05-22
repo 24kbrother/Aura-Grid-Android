@@ -123,6 +123,17 @@ class MainActivity : AppCompatActivity() {
         val locale = java.util.Locale(languageCode)
         java.util.Locale.setDefault(locale)
         val config = context.resources.configuration
+        
+        val currentLocale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            config.locales[0]
+        } else {
+            @Suppress("DEPRECATION")
+            config.locale
+        }
+        if (currentLocale.language == languageCode) {
+            return
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
             config.setLocale(locale)
         } else {

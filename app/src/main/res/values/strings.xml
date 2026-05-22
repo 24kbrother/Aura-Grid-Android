@@ -1,11 +1,20 @@
 <resources>
     <string name="app_name">Aura Grid</string>
-    <string name="app_version">v2.0.0-STABLE</string>
+    <string name="app_version">v2.1.0-OTA</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">Aura Grid Companion Settings</string>
     <string name="server_lan_url">Local LAN Server URL</string>
     <string name="server_wan_url">Cloud WAN Server URL</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="device_mode">Device Work Mode</string>
+    <string name="mode_kiosk">Wall Kiosk (Keep Screen On)</string>
+    <string name="mode_companion">Companion (Mobile)</string>
+    <string name="system_language">System Language / 系统语言</string>
+    <string name="lang_zh">中文 (简体)</string>
+    <string name="lang_en">English</string>
+    <string name="cancel">Cancel</string>
     <string name="save_settings">Save Config</string>
     
     <!-- Connection States -->
@@ -13,4 +22,8 @@
     <string name="connection_failed">Connection Lost</string>
     <string name="reconnecting">Attempting auto-recovery in 3s...</string>
     <string name="check_network">Please verify your server address or network connection.</string>
+    
+    <!-- OTA Upgrade Screen -->
+    <string name="system_upgrade">System Upgrade</string>
+    <string name="downloading_update">Downloading Aura Grid Kiosk Update...</string>
 </resources>

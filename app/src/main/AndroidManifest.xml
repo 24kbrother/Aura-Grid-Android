@@ -37,7 +37,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|locale|layoutDirection"
             android:screenOrientation="sensorLandscape"
             android:showWhenLocked="true"
             android:turnScreenOn="true">
