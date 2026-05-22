@@ -29,6 +29,12 @@ import com.auragrid.app.databinding.ActivityMainBinding
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
 import java.security.MessageDigest
+import androidx.core.content.FileProvider
+import android.widget.Toast
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * MainActivity: Represents the industrial Kiosk display window.
@@ -585,6 +591,134 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun installApk(file: File) {
+        val context = this@MainActivity
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                runOnUiThread {
+                    Toast.makeText(context, "Please allow unknown app installation and retry", Toast.LENGTH_LONG).show()
+                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+                return
+            }
+        }
+
+        try {
+            val apkUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Installation failed: ${e.message}")
+            runOnUiThread {
+                Toast.makeText(context, "Installation failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun startUpgradeFlow(downloadUrl: String) {
+        runOnUiThread {
+            binding.downloadOverlay.visibility = View.VISIBLE
+            binding.downloadProgressBar.isIndeterminate = true
+            binding.downloadProgressBar.progress = 0
+            binding.downloadPercent.text = "0%"
+            binding.downloadSpeed.text = "Connecting..."
+            binding.downloadStatus.text = "Initializing download..."
+        }
+
+        executor.submit {
+            var connection: java.net.HttpURLConnection? = null
+            var input: java.io.InputStream? = null
+            var output: java.io.FileOutputStream? = null
+            val apkFile = File(cacheDir, "aura_grid_update.apk")
+
+            try {
+                if (apkFile.exists()) {
+                    apkFile.delete()
+                }
+
+                val url = URL(downloadUrl)
+                connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
+                connection.connect()
+
+                if (connection.responseCode != java.net.HttpURLConnection.HTTP_OK) {
+                    throw java.io.IOException("Server returned HTTP ${connection.responseCode}")
+                }
+
+                val fileLength = connection.contentLength
+                input = connection.inputStream
+                output = FileOutputStream(apkFile)
+
+                val data = ByteArray(4096)
+                var total: Long = 0
+                var count: Int
+                val startTime = System.currentTimeMillis()
+
+                runOnUiThread {
+                    binding.downloadProgressBar.isIndeterminate = fileLength <= 0
+                    binding.downloadStatus.text = "Downloading OTA package..."
+                }
+
+                while (input.read(data).also { count = it } != -1) {
+                    total += count
+                    output.write(data, 0, count)
+
+                    if (fileLength > 0) {
+                        val progress = (total * 100 / fileLength).toInt()
+                        val elapsedTime = (System.currentTimeMillis() - startTime) / 1000.0
+                        val speedKbps = if (elapsedTime > 0) (total / 1024.0 / elapsedTime).toInt() else 0
+                        val speedText = if (speedKbps > 1024) String.format("%.2f MB/s", speedKbps / 1024.0) else "$speedKbps KB/s"
+                        
+                        runOnUiThread {
+                            binding.downloadProgressBar.progress = progress
+                            binding.downloadPercent.text = "$progress%"
+                            binding.downloadSpeed.text = speedText
+                        }
+                    } else {
+                        val downloadedMb = total / 1024.0 / 1024.0
+                        runOnUiThread {
+                            binding.downloadPercent.text = String.format("%.1f MB", downloadedMb)
+                            binding.downloadSpeed.text = "Downloading..."
+                        }
+                    }
+                }
+
+                output.flush()
+                
+                runOnUiThread {
+                    binding.downloadOverlay.visibility = View.GONE
+                    installApk(apkFile)
+                }
+
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Download failed: ${e.message}")
+                runOnUiThread {
+                    binding.downloadOverlay.visibility = View.GONE
+                    Toast.makeText(this@MainActivity, "Download failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                try {
+                    output?.close()
+                    input?.close()
+                } catch (ignored: Exception) {}
+                connection?.disconnect()
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         recoveryHandler.removeCallbacks(recoveryRunnable)
@@ -615,10 +749,32 @@ class MainActivity : AppCompatActivity() {
                 put("model", Build.MODEL)
                 put("manufacturer", Build.MANUFACTURER)
                 put("osVersion", Build.VERSION.SDK_INT)
-                put("appVersion", "2.0.0-APP")
+                put("appVersion", getAppVersion())
                 put("isKioskMode", isKioskMode)
                 put("platform", "android")
             }.toString()
+        }
+
+        /**
+         * Returns current companion app version.
+         */
+        @JavascriptInterface
+        fun getAppVersion(): String {
+            return try {
+                val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                packageInfo.versionName ?: "2.1.0-OTA"
+            } catch (e: Exception) {
+                "2.1.0-OTA"
+            }
+        }
+
+        /**
+         * Triggers one-click background APK download and install
+         */
+        @JavascriptInterface
+        fun startUpgrade(downloadUrl: String) {
+            Log.i("AuraJSBridge", "Upgrade requested: $downloadUrl")
+            startUpgradeFlow(downloadUrl)
         }
 
         /**

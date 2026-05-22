@@ -12,8 +12,8 @@ android {
         applicationId = "com.auragrid.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 200
-        versionName = "2.0.0-APP"
+        versionCode = 210
+        versionName = "2.1.0-OTA"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
