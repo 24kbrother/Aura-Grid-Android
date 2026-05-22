@@ -24,3 +24,7 @@ local.properties
 *.jks
 *.keystore
 
+# Local confidential design plans and architecture trace logs
+local_designs/
+
+
