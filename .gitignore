@@ -14,3 +14,13 @@
 .cxx
 local.properties
 /app/build
+
+# Google Services & AppGallery Connect configuration (Push Keys for Open-source safety)
+**/google-services.json
+**/agconnect-services.json
+
+# Local Keystore properties & signatures (App signing)
+**/keystore.properties
+*.jks
+*.keystore
+

@@ -267,37 +267,64 @@ class MainActivity : AppCompatActivity() {
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupGestureInterceptors() {
-        var startX = 0f
-        var startY = 0f
-        val edgeThreshold = 80 // pixels from right edge to start swipe
-        val swipeThreshold = 150 // pixels to travel left to trigger settings
+        var threeFingerTapCount = 0
+        var lastThreeFingerTapTime = 0L
+        var cornerClickCount = 0
+        var lastCornerClickTime = 0L
 
         binding.webView.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = event.x
-                    startY = event.y
+            val actionMasked = event.actionMasked
+            
+            // 1. Detect 3-Finger Tap (Any Down event where pointer count is 3)
+            if ((actionMasked == MotionEvent.ACTION_POINTER_DOWN || actionMasked == MotionEvent.ACTION_DOWN) && event.pointerCount == 3) {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastThreeFingerTapTime < 1000L) {
+                    // Debounce: ensure it is a separate touch event (> 150ms) and not a single messy touch frame
+                    if (currentTime - lastThreeFingerTapTime > 150L) {
+                        threeFingerTapCount++
+                        Log.d("MainActivity", "Three-finger tap registered. Count: $threeFingerTapCount")
+                    }
+                } else {
+                    threeFingerTapCount = 1
+                    Log.d("MainActivity", "Three-finger tap registered. Resetted Count to 1")
                 }
-                MotionEvent.ACTION_UP -> {
-                    val endX = event.x
-                    val endY = event.y
-                    val screenWidth = resources.displayMetrics.widthPixels
+                lastThreeFingerTapTime = currentTime
+                
+                if (threeFingerTapCount >= 3) {
+                    Log.i("MainActivity", "Three-finger Triple Tap detected! Opening settings.")
+                    threeFingerTapCount = 0
+                    toggleSettingsOverlay(true)
+                    return@setOnTouchListener true // Intercept!
+                }
+            }
+            
+            // 2. Fallback: Top-Right Corner 5-Click (100% single-touch compatible)
+            if (actionMasked == MotionEvent.ACTION_DOWN) {
+                val x = event.x
+                val y = event.y
+                val screenWidth = resources.displayMetrics.widthPixels
+                
+                // Define top-right corner hot zone: extreme top-right 100x100 pixels
+                if (x >= screenWidth - 100 && y <= 100) {
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastCornerClickTime < 1500L) {
+                        cornerClickCount++
+                        Log.d("MainActivity", "Corner click registered. Count: $cornerClickCount")
+                    } else {
+                        cornerClickCount = 1
+                        Log.d("MainActivity", "Corner click registered. Resetted Count to 1")
+                    }
+                    lastCornerClickTime = currentTime
                     
-                    // Check if start point was near the right edge of the screen
-                    if (startX >= screenWidth - edgeThreshold) {
-                        val deltaX = startX - endX // Moving left yields positive delta
-                        val deltaY = java.lang.Math.abs(startY - endY)
-                        
-                        // Swipe left must exceed horizontal threshold and be relatively horizontal
-                        if (deltaX > swipeThreshold && deltaY < 150) {
-                            Log.i("MainActivity", "Right-edge swipe-left gesture detected. Opening settings.")
-                            toggleSettingsOverlay(true)
-                            return@setOnTouchListener true
-                        }
+                    if (cornerClickCount >= 5) {
+                        Log.i("MainActivity", "Top-Right Corner 5-Click detected! Opening settings.")
+                        cornerClickCount = 0
+                        toggleSettingsOverlay(true)
+                        return@setOnTouchListener true // Intercept!
                     }
                 }
             }
-            false
+            false // Let WebView process standard gestures (scroll, pinch, zoom, etc.)
         }
         
         binding.loadingOverlay.setOnTouchListener { _, event ->
