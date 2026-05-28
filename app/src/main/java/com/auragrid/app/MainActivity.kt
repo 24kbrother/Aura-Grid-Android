@@ -256,6 +256,7 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            userAgentString = "AuraGridApp/1.1.0 (Android; Mobile)"
             
             // Allow auto-playing live streams and camera feeds
             mediaPlaybackRequiresUserGesture = false
@@ -586,6 +587,7 @@ class MainActivity : AppCompatActivity() {
             connection.readTimeout = 5000
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Mobile)")
             connection.doOutput = true
 
             val jsonParam = org.json.JSONObject().apply {
@@ -803,6 +805,7 @@ class MainActivity : AppCompatActivity() {
                 connection = url.openConnection() as java.net.HttpURLConnection
                 connection.connectTimeout = 15000
                 connection.readTimeout = 15000
+                connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Mobile)")
                 connection.connect()
 
                 if (connection.responseCode != java.net.HttpURLConnection.HTTP_OK) {
