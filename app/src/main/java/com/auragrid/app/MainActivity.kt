@@ -602,7 +602,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
         binding.btnQuickDemo.text = if (langCode == "zh") "一键进入演示系统" else "ENTER DEMO MODE"
         binding.btnExitDemo.text = if (langCode == "zh") "一键退出演示系统" else "EXIT DEMO MODE"
-        binding.btnWipeData.text = if (langCode == "zh") "擦除配置与缓存" else "WIPE DATA & CACHE"
+        binding.btnWipeData.text = if (langCode == "zh") "擦除数据并退出" else "ERASE DATA & EXIT"
         
         // Handle "Save Config" vs "Save Anyway"
         val currentBtnText = binding.btnSaveSettings.text.toString()

@@ -348,7 +348,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
-                        android:text="擦除配置与缓存"
+                        android:text="擦除数据并退出"
                         android:textColor="#FF3333"
                         android:textSize="12sp"
                         android:textStyle="bold"
