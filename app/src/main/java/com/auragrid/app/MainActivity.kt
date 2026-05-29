@@ -59,6 +59,9 @@ class MainActivity : AppCompatActivity() {
     private val recoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val recoveryRunnable = Runnable { attemptAutoRecovery() }
 
+    private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
+    private val FILECHOOSER_RESULTCODE = 10001
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -269,6 +272,36 @@ class MainActivity : AppCompatActivity() {
         // Inject the secure cross-platform bridge object
         binding.webView.addJavascriptInterface(AuraNativeBridge(this), "AuraNative")
 
+        // Support file downloads (Export full configuration backup)
+        binding.webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
+            shareOrSaveDownloadedFile(url, mimetype, contentDisposition)
+        }
+
+        // Support file picker inputs (Import configuration backup)
+        binding.webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: android.webkit.ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                uploadMessage?.onReceiveValue(null)
+                uploadMessage = filePathCallback
+
+                val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "*/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                }
+                try {
+                    startActivityForResult(intent, FILECHOOSER_RESULTCODE)
+                } catch (e: Exception) {
+                    uploadMessage?.onReceiveValue(null)
+                    uploadMessage = null
+                    return false
+                }
+                return true
+            }
+        }
+
         // Hook system client events
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -306,6 +339,145 @@ class MainActivity : AppCompatActivity() {
                 if (request?.isForMainFrame == true) {
                     handlePageLoadFailure()
                 }
+            }
+
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return false
+                return handleUrlRedirection(url)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                if (url == null) return false
+                return handleUrlRedirection(url)
+            }
+        }
+    }
+
+    /**
+     * Intercepts external URLs in the main frame and forces opening them in the default system browser.
+     */
+    private fun handleUrlRedirection(url: String): Boolean {
+        try {
+            val uri = Uri.parse(url)
+            val scheme = uri.scheme ?: return false
+            
+            // 1. Intercept mailto, tel, or other non-http schemes to open in system handler
+            if (scheme != "http" && scheme != "https") {
+                val intent = Intent(Intent.ACTION_VIEW, uri)
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                    return true
+                }
+                return false
+            }
+            
+            val targetHost = uri.host ?: return false
+            
+            // 2. Open external links in default browser
+            val mainUri = runCatching { Uri.parse(activeUrl) }.getOrNull()
+            val mainHost = mainUri?.host
+            
+            val lanHost = runCatching { Uri.parse(lanUrl).host }.getOrNull()
+            val wanHost = runCatching { Uri.parse(wanUrl).host }.getOrNull()
+            
+            val isLocal = targetHost.equals("localhost", ignoreCase = true) || targetHost.equals("127.0.0.1")
+            
+            // If the target host matches our current main host, or lan host, or wan host, or is localhost, it's internal
+            val isInternal = (mainHost != null && targetHost.equals(mainHost, ignoreCase = true)) ||
+                    (lanHost != null && targetHost.equals(lanHost, ignoreCase = true)) ||
+                    (wanHost != null && targetHost.equals(wanHost, ignoreCase = true)) ||
+                    isLocal
+                    
+            if (!isInternal) {
+                Log.d("MainActivity", "Intercepted external URL loading in main frame: $url. Opening in external browser...")
+                val intent = Intent(Intent.ACTION_VIEW, uri)
+                startActivity(intent)
+                return true
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return false
+    }
+
+    /**
+     * Handles the file picker result and returns the selected file Uri to WebView.
+     */
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FILECHOOSER_RESULTCODE) {
+            if (uploadMessage == null) return
+            val result = if (data == null || resultCode != RESULT_OK) null else data.data
+            if (result != null) {
+                uploadMessage?.onReceiveValue(arrayOf(result))
+            } else {
+                uploadMessage?.onReceiveValue(null)
+            }
+            uploadMessage = null
+        }
+    }
+
+    /**
+     * Intercepts base64 data URLs downloaded from WebView, saves them as a temporary file,
+     * and triggers a native Android Share Sheet so the user can save or send the backup.
+     */
+    private fun shareOrSaveDownloadedFile(url: String, mimeType: String?, contentDisposition: String?) {
+        try {
+            val isZh = tempSelectedLang == "zh"
+            
+            // Extract file name
+            var fileName = "auragrid_backup.json"
+            if (contentDisposition != null) {
+                val index = contentDisposition.indexOf("filename=")
+                if (index > 0) {
+                    fileName = contentDisposition.substring(index + 9).replace("\"", "").trim()
+                }
+            }
+            
+            // Extract data content if it's base64 or plain data URL
+            val dataBytes: ByteArray
+            if (url.startsWith("data:")) {
+                val commaIndex = url.indexOf(",")
+                if (commaIndex > 0) {
+                    val dataPart = url.substring(commaIndex + 1)
+                    val header = url.substring(0, commaIndex)
+                    dataBytes = if (header.contains("base64")) {
+                        android.util.Base64.decode(dataPart, android.util.Base64.DEFAULT)
+                    } else {
+                        java.net.URLDecoder.decode(dataPart, "UTF-8").toByteArray()
+                    }
+                } else {
+                    return
+                }
+            } else {
+                // If it's a blob or network URL, open in system browser or download manager
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                startActivity(intent)
+                return
+            }
+            
+            // Save to temporary cache directory
+            val tempFile = java.io.File(cacheDir, fileName)
+            java.io.FileOutputStream(tempFile).use { fos ->
+                fos.write(dataBytes)
+            }
+            
+            // Share via FileProvider to avoid FileUriExposedException and bypass runtime permission prompts
+            val fileUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", tempFile)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType ?: "application/json"
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            
+            val title = if (isZh) "导出并保存配置文件" else "Export & Save Configuration"
+            startActivity(Intent.createChooser(intent, title))
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+            runOnUiThread {
+                Toast.makeText(this, "Export failed: " + e.localizedMessage, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -428,6 +600,9 @@ class MainActivity : AppCompatActivity() {
         binding.radioCompanion.text = res.getString(R.string.mode_companion)
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
+        binding.btnQuickDemo.text = if (langCode == "zh") "一键进入演示系统" else "ENTER DEMO MODE"
+        binding.btnExitDemo.text = if (langCode == "zh") "一键退出演示系统" else "EXIT DEMO MODE"
+        binding.btnWipeData.text = if (langCode == "zh") "擦除配置与缓存" else "WIPE DATA & CACHE"
         
         // Handle "Save Config" vs "Save Anyway"
         val currentBtnText = binding.btnSaveSettings.text.toString()
@@ -512,15 +687,16 @@ class MainActivity : AppCompatActivity() {
                     resolvedBaseUrl = wanStr
                 }
 
+                val finalToken = token
                 runOnUiThread {
                     binding.btnSaveSettings.isEnabled = true
                     val activeRes = getLocalizedResources(this@MainActivity, tempSelectedLang)
-                    if (token != null) {
+                    if (finalToken != null) {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#00FF66")) // Green for success
                         binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
                         
                         // Save config with verified token
-                        saveConfig(lanStr, wanStr, userStr, passStr, token, isKiosk, selectedLang)
+                        saveConfig(lanStr, wanStr, userStr, passStr, finalToken, isKiosk, selectedLang)
                         
                         // Close settings after a small delay
                         binding.txtVerificationStatus.postDelayed({
@@ -535,6 +711,539 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        binding.btnQuickDemo.setOnClickListener {
+            showDemoModeIntroductionDialog { dialog ->
+                val isZh = tempSelectedLang == "zh"
+                
+                // Disable settings overlay buttons to prevent secondary actions
+                binding.btnSaveSettings.isEnabled = false
+                binding.btnCancelSettings.isEnabled = false
+                binding.btnQuickDemo.isEnabled = false
+
+                // 2. 异步执行静默网络握手
+                executor.execute {
+                    var token: String? = null
+                    var errorMsg: String? = null
+                    
+                    try {
+                        val authURL = java.net.URL("https://demo2.iaura.cn/api/v1/auth/login")
+                        val connection = authURL.openConnection() as java.net.HttpURLConnection
+                        connection.requestMethod = "POST"
+                        connection.setRequestProperty("Content-Type", "application/json")
+                        // 注入特权 Companion App User-Agent 绕过 Nginx 444 阻断
+                        connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Tablet)")
+                        connection.connectTimeout = 6000
+                        connection.readTimeout = 6000
+                        connection.doOutput = true
+
+                        val jsonInputString = "{\"username\": \"admin\", \"password\": \"123456\"}"
+                        connection.outputStream.use { os ->
+                            val input = jsonInputString.toByteArray(charset("utf-8"))
+                            os.write(input, 0, input.size)
+                        }
+
+                        val code = connection.responseCode
+                        if (code == 200 || code == 201) {
+                            val response = connection.inputStream.bufferedReader().use { it.readText() }
+                            val jsonObject = org.json.JSONObject(response)
+                            if (jsonObject.has("access_token")) {
+                                token = jsonObject.getString("access_token")
+                            }
+                        } else {
+                            errorMsg = "HTTP $code"
+                        }
+                    } catch (e: java.lang.Exception) {
+                        errorMsg = e.localizedMessage
+                    }
+
+                    val finalToken = token
+                    val finalErrorMsg = errorMsg
+
+                    runOnUiThread {
+                        binding.btnSaveSettings.isEnabled = true
+                        binding.btnCancelSettings.isEnabled = true
+                        binding.btnQuickDemo.isEnabled = true
+
+                        if (finalToken != null) {
+                            // 3. 直接保存硬编码的演示配置，静默绕过表单输入！
+                            val isKiosk = binding.radioKiosk.isChecked
+                            sharedPreferences.edit().putBoolean("is_demo_mode", true).apply()
+                            
+                            // 先安全关闭 Dialog 并隐藏设置页，再保存配置触发 Activity 重建，彻底规避 WindowManager 坏 Token 闪退
+                            try {
+                                dialog.dismiss()
+                            } catch (e: java.lang.Exception) {
+                                e.printStackTrace()
+                            }
+                            toggleSettingsOverlay(false)
+                            binding.btnCancelSettings.visibility = View.VISIBLE
+                            
+                            saveConfig("https://demo2.iaura.cn", "https://demo2.iaura.cn", "admin", "123456", finalToken, isKiosk, tempSelectedLang)
+                        } else {
+                            // Restore dialog UI and display error message inside full-screen dialog
+                            val scrollView = dialog.findViewById<android.widget.ScrollView>(10001)
+                            val buttonsLayout = dialog.findViewById<android.widget.LinearLayout>(10002)
+                            val loadingLayout = dialog.findViewById<android.widget.LinearLayout>(10003)
+                            val dialogErrorText = dialog.findViewById<android.widget.TextView>(10004)
+                            
+                            scrollView?.visibility = android.view.View.VISIBLE
+                            buttonsLayout?.visibility = android.view.View.VISIBLE
+                            loadingLayout?.visibility = android.view.View.GONE
+                            dialogErrorText?.visibility = android.view.View.VISIBLE
+                            dialogErrorText?.text = (if (isZh) "进入演示系统失败: " else "Failed to enter demo: ") + (finalErrorMsg ?: "Unknown error")
+                        }
+                    }
+                }
+            }
+        }
+
+        binding.btnExitDemo.setOnClickListener {
+            sharedPreferences.edit().apply {
+                remove("server_lan_url")
+                remove("server_wan_url")
+                remove("auth_user")
+                remove("auth_pass")
+                remove("auth_token")
+                putBoolean("is_demo_mode", false)
+                putBoolean("is_configured", false)
+                apply()
+            }
+            clearAppCacheAndWebView(this)
+            recreate()
+        }
+
+        binding.btnWipeData.setOnClickListener {
+            sharedPreferences.edit().apply {
+                remove("server_lan_url")
+                remove("server_wan_url")
+                remove("auth_user")
+                remove("auth_pass")
+                remove("auth_token")
+                putBoolean("is_demo_mode", false)
+                putBoolean("is_configured", false)
+                apply()
+            }
+            clearAppCacheAndWebView(this)
+            recreate()
+        }
+    }
+
+    /**
+     * Shows a beautiful, high-end dialog explaining Demo Mode, PRO features, and limitations.
+     */
+    private fun showDemoModeIntroductionDialog(onConfirm: (android.app.Dialog) -> Unit) {
+        val isZh = tempSelectedLang == "zh"
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setCancelable(false)
+        
+        // Deep obsidian background layout
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#08080C"))
+            setPadding(48, 48, 48, 48)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+        }
+        
+        // 1. Beautiful Cyber Handshake Loader (Initially GONE)
+        val loadingLayout = android.widget.LinearLayout(this).apply {
+            id = 10003
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            visibility = android.view.View.GONE
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                0
+            ).apply {
+                weight = 1f
+            }
+            
+            val progressBar = android.widget.ProgressBar(this@MainActivity).apply {
+                // Cyan tint
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E5FF"))
+            }
+            addView(progressBar)
+            
+            val loadingText = android.widget.TextView(this@MainActivity).apply {
+                text = if (isZh) "正在安全认证演示系统..." else "AUTHENTICATING DEMO SHIELD..."
+                textSize = 14f
+                setTextColor(Color.parseColor("#00E5FF"))
+                typeface = android.graphics.Typeface.MONOSPACE
+                gravity = android.view.Gravity.CENTER
+                setPadding(0, 32, 0, 8)
+            }
+            addView(loadingText)
+            
+            val loadingSubText = android.widget.TextView(this@MainActivity).apply {
+                text = if (isZh) "正在为您跨国建立安全加密信道" else "Establishing overseas secure encrypted tunnel"
+                textSize = 11f
+                setTextColor(Color.GRAY)
+                typeface = android.graphics.Typeface.MONOSPACE
+                gravity = android.view.Gravity.CENTER
+            }
+            addView(loadingSubText)
+        }
+        
+        // Icon / Header
+        val headerView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 40
+            }
+        }
+        
+        val shieldIcon = android.widget.TextView(this).apply {
+            text = "⚡"
+            textSize = 48f
+            gravity = android.view.Gravity.CENTER
+        }
+        headerView.addView(shieldIcon)
+        
+        val titleText = android.widget.TextView(this).apply {
+            text = if (isZh) "💡 AURA Grid PRO 演示沙盒体验指南" else "💡 AURA Grid PRO Public Demo Guide"
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 16
+            }
+        }
+        headerView.addView(titleText)
+        
+        val subtitleText = android.widget.TextView(this).apply {
+            text = "AURA-GRID-PRO-SANDBOX-VERIFICATION"
+            textSize = 9f
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = android.graphics.Typeface.MONOSPACE
+            letterSpacing = 0.2f
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 8
+            }
+        }
+        headerView.addView(subtitleText)
+        
+        container.addView(headerView)
+        
+        // Scrollable content area
+        val scrollView = android.widget.ScrollView(this).apply {
+            id = 10001
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                0
+            ).apply {
+                weight = 1f
+                topMargin = 32
+                bottomMargin = 32
+            }
+            isVerticalScrollBarEnabled = false
+        }
+        
+        val contentLayout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(24, 24, 24, 24)
+            val shape = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#0DFFFFFF"))
+                setStroke(2, Color.parseColor("#2600E5FF"))
+                cornerRadius = 24f
+            }
+            background = shape
+        }
+        
+        val introText = android.widget.TextView(this).apply {
+            text = if (isZh) {
+                "欢迎体验 AURA Grid 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
+            } else {
+                "Welcome to AURA Grid Companion Terminal! You are entering the public sandbox. Please read the following guidelines:"
+            }
+            textSize = 13f
+            setTextColor(Color.parseColor("#8E8E93"))
+            setLineSpacing(0f, 1.2f)
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 24
+            }
+        }
+        contentLayout.addView(introText)
+        
+        // Helper to add list items
+        fun addFeatureItem(number: String, title: String, desc: String) {
+            val itemLayout = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 20
+                }
+            }
+            
+            val numView = android.widget.TextView(this).apply {
+                text = number
+                textSize = 15f
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    rightMargin = 16
+                }
+            }
+            itemLayout.addView(numView)
+            
+            val detailsLayout = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    weight = 1f
+                }
+            }
+            
+            val itemTitle = android.widget.TextView(this).apply {
+                text = title
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 4
+                }
+            }
+            detailsLayout.addView(itemTitle)
+            
+            val itemDesc = android.widget.TextView(this).apply {
+                text = desc
+                textSize = 12f
+                setTextColor(Color.parseColor("#8E8E93"))
+                setLineSpacing(0f, 1.2f)
+            }
+            detailsLayout.addView(itemDesc)
+            
+            itemLayout.addView(detailsLayout)
+            contentLayout.addView(itemLayout)
+        }
+        
+        if (isZh) {
+            addFeatureItem(
+                "1️⃣",
+                "尊享 PRO 全功能体验",
+                "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！"
+            )
+            addFeatureItem(
+                "2️⃣",
+                "零风险仿真沙盒运行",
+                "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！"
+            )
+            addFeatureItem(
+                "3️⃣",
+                "布局只读保护限制",
+                "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。"
+            )
+            addFeatureItem(
+                "⚙️",
+                "如何退出演示模式",
+                "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择“一键退出演示模式”即可。"
+            )
+        } else {
+            addFeatureItem(
+                "1️⃣",
+                "Full PRO Feature Access",
+                "All PRO commercial edition features are fully enabled here. Feel free to explore multi-floor integration, custom canvas layout widgets, security cockpit, and dynamic weather animations!"
+            )
+            addFeatureItem(
+                "2️⃣",
+                "Zero-Risk Simulation Sandbox",
+                "Connected to a fully simulated mock data environment. Any toggle, dimming or scene switching commands are completely safe and will not affect any real physical hardware."
+            )
+            addFeatureItem(
+                "3️⃣",
+                "Read-Only Configuration Limits",
+                "To keep the public dashboard clean for everyone, saving layouts and uploading files are disabled."
+            )
+            addFeatureItem(
+                "⚙️",
+                "How to Exit Demo Mode",
+                "Tip: If you need to exit demo mode, simply [triple-tap with three fingers] anywhere on the screen to invoke the admin settings, then select 'Exit Demo Mode'."
+            )
+        }
+        
+        scrollView.addView(contentLayout)
+        container.addView(scrollView)
+        container.addView(loadingLayout) // Add the loading layout!
+        
+        // Error message text inside Dialog
+        val errorText = android.widget.TextView(this).apply {
+            id = 10004
+            textSize = 11f
+            setTextColor(Color.parseColor("#FF3333"))
+            gravity = android.view.Gravity.CENTER
+            visibility = android.view.View.GONE
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 16
+            }
+        }
+        container.addView(errorText)
+        
+        // Buttons
+        val buttonsLayout = android.widget.LinearLayout(this).apply {
+            id = 10002
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 16
+            }
+        }
+        
+        val enterButton = android.widget.Button(this).apply {
+            text = if (isZh) "同意并立即进入体验" else "AGREE & ENTER DEMO MODE"
+            textSize = 14f
+            setTextColor(Color.BLACK)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            
+            // Cyber teal gradient drawable
+            val btnShape = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.parseColor("#00E5FF"), Color.parseColor("#0086FF"))
+            ).apply {
+                cornerRadius = 16f
+            }
+            background = btnShape
+            
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                120
+            ).apply {
+                bottomMargin = 24
+            }
+            
+            setOnClickListener {
+                // Show loader, hide contents
+                scrollView.visibility = android.view.View.GONE
+                buttonsLayout.visibility = android.view.View.GONE
+                errorText.visibility = android.view.View.GONE
+                loadingLayout.visibility = android.view.View.VISIBLE
+                
+                onConfirm(dialog)
+            }
+        }
+        buttonsLayout.addView(enterButton)
+        
+        val cancelButton = android.widget.TextView(this).apply {
+            text = if (isZh) "取消" else "CANCEL"
+            textSize = 13f
+            setTextColor(Color.parseColor("#8E8E93"))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            setPadding(24, 24, 24, 24)
+            isClickable = true
+            
+            setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+        buttonsLayout.addView(cancelButton)
+        
+        container.addView(buttonsLayout)
+        
+        dialog.setContentView(container)
+        dialog.show()
+    }
+
+    /**
+     * Clears all application caches, WebView databases, and session cookies for a clean state.
+     */
+    private fun clearAppCacheAndWebView(context: android.content.Context) {
+        try {
+            // 1. Clear WebView standard cache
+            val webView = android.webkit.WebView(context)
+            webView.clearCache(true)
+            
+            // 2. Clear Session and Persistent Cookies
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                cookieManager.removeAllCookies(null)
+                cookieManager.flush()
+            } else {
+                val cookieSyncMngr = android.webkit.CookieSyncManager.createInstance(context)
+                cookieSyncMngr.startSync()
+                cookieManager.removeAllCookie()
+                cookieSyncMngr.stopSync()
+            }
+            
+            // 3. Recursively clear internal files in App Caches Directory
+            val cacheDir = context.cacheDir
+            if (cacheDir != null && cacheDir.isDirectory) {
+                deleteDirContents(cacheDir)
+            }
+            
+            // 4. Remove Webview internal persistence databases
+            context.deleteDatabase("webview.db")
+            context.deleteDatabase("webviewCache.db")
+            
+            val isZh = tempSelectedLang == "zh"
+            android.widget.Toast.makeText(
+                context, 
+                if (isZh) "🧹 伴侣终端已完成缓存清理与安全重置" else "🧹 Cache cleared and node successfully reset", 
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun deleteDirContents(dir: java.io.File?): Boolean {
+        if (dir != null && dir.isDirectory) {
+            val children = dir.list()
+            if (children != null) {
+                for (i in children.indices) {
+                    val success = deleteFileOrDir(java.io.File(dir, children[i]))
+                    if (!success) {
+                        return false
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private fun deleteFileOrDir(file: java.io.File?): Boolean {
+        if (file != null && file.isDirectory) {
+            val children = file.list()
+            if (children != null) {
+                for (i in children.indices) {
+                    val success = deleteFileOrDir(java.io.File(file, children[i]))
+                    if (!success) {
+                        return false
+                    }
+                }
+            }
+            return file.delete()
+        } else if (file != null && file.isFile) {
+            return file.delete()
+        }
+        return false
     }
 
     private fun toggleSettingsOverlay(show: Boolean) {
@@ -543,6 +1252,19 @@ class MainActivity : AppCompatActivity() {
             binding.txtVerificationStatus.visibility = View.GONE
             binding.btnCancelSettings.visibility = if (sharedPreferences.getBoolean("is_configured", false)) View.VISIBLE else View.GONE
             
+            // 根据当前是否处于演示模式，动态切换 一键进入 vs 一键退出 按钮的显隐
+            val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
+            if (isDemo) {
+                binding.btnQuickDemo.visibility = View.GONE
+                binding.btnExitDemo.visibility = View.VISIBLE
+                binding.btnWipeData.visibility = View.GONE
+            } else {
+                binding.btnQuickDemo.visibility = View.VISIBLE
+                binding.btnExitDemo.visibility = View.GONE
+                val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+                binding.btnWipeData.visibility = if (isConfigured) View.VISIBLE else View.GONE
+            }
+
             binding.settingsOverlay.visibility = View.VISIBLE
             binding.settingsOverlay.alpha = 1f
         } else {
