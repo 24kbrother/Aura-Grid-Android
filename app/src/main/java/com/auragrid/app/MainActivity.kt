@@ -124,7 +124,12 @@ class MainActivity : AppCompatActivity() {
      * Helper to set language configuration dynamically at runtime.
      */
     private fun setAppLocale(context: Context, languageCode: String) {
-        val locale = java.util.Locale(languageCode)
+        val locale = when (languageCode) {
+            "zh-rTW", "zh-TW" -> java.util.Locale("zh", "TW")
+            "zh-rCN", "zh" -> java.util.Locale("zh", "CN")
+            "en" -> java.util.Locale("en")
+            else -> java.util.Locale(languageCode)
+        }
         java.util.Locale.setDefault(locale)
         val config = context.resources.configuration
         
@@ -134,7 +139,16 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             config.locale ?: java.util.Locale.getDefault()
         }
-        if (currentLocale.language == languageCode) {
+        
+        val isMatch = if (languageCode == "zh-rTW" || languageCode == "zh-TW") {
+            currentLocale.language == "zh" && currentLocale.country == "TW"
+        } else if (languageCode == "zh") {
+            currentLocale.language == "zh" && currentLocale.country != "TW"
+        } else {
+            currentLocale.language == languageCode
+        }
+
+        if (isMatch) {
             return
         }
 
@@ -259,7 +273,14 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            userAgentString = "AuraGridApp/1.1.0 (Android; Mobile)"
+            
+            val savedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
+            val webLang = when (savedLang) {
+                "zh-rTW", "zh-TW" -> "zh-TW"
+                "en" -> "en"
+                else -> "zh-CN"
+            }
+            userAgentString = "AuraGridApp/1.1.0 (Android; Mobile) Lang/$webLang"
             
             // Allow auto-playing live streams and camera feeds
             mediaPlaybackRequiresUserGesture = false
@@ -600,16 +621,31 @@ class MainActivity : AppCompatActivity() {
         binding.radioCompanion.text = res.getString(R.string.mode_companion)
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
-        binding.btnQuickDemo.text = if (langCode == "zh") "一键进入演示系统" else "ENTER DEMO MODE"
-        binding.btnExitDemo.text = if (langCode == "zh") "一键退出演示系统" else "EXIT DEMO MODE"
-        binding.btnWipeData.text = if (langCode == "zh") "擦除数据并退出" else "ERASE DATA & EXIT"
+        
+        binding.btnQuickDemo.text = when (langCode) {
+            "zh-rTW", "zh-TW" -> "一鍵進入演示系統"
+            "zh" -> "一键进入演示系统"
+            else -> "ENTER DEMO MODE"
+        }
+        binding.btnExitDemo.text = when (langCode) {
+            "zh-rTW", "zh-TW" -> "一鍵退出演示系統"
+            "zh" -> "一键退出演示系统"
+            else -> "EXIT DEMO MODE"
+        }
+        binding.btnWipeData.text = when (langCode) {
+            "zh-rTW", "zh-TW" -> "擦除數據並退出"
+            "zh" -> "擦除数据并退出"
+            else -> "ERASE DATA & EXIT"
+        }
         
         // Handle "Save Config" vs "Save Anyway"
         val currentBtnText = binding.btnSaveSettings.text.toString()
         val anywayZH = "强制保存"
         val anywayEN = "Save Anyway"
-        if (currentBtnText == anywayZH || currentBtnText == anywayEN) {
-            binding.btnSaveSettings.text = res.getString(R.string.save_anyway)
+        
+        val saveAnywayStr = res.getString(R.string.save_anyway)
+        if (currentBtnText == anywayZH || currentBtnText == "強制儲存" || currentBtnText == anywayEN) {
+            binding.btnSaveSettings.text = saveAnywayStr
         } else {
             binding.btnSaveSettings.text = res.getString(R.string.save_settings)
         }
@@ -617,11 +653,11 @@ class MainActivity : AppCompatActivity() {
         // Translate verification status message on the fly if visible
         if (binding.txtVerificationStatus.visibility == View.VISIBLE) {
             val statusText = binding.txtVerificationStatus.text.toString()
-            if (statusText.contains("Verifying") || statusText.contains("正在验证")) {
+            if (statusText.contains("Verifying") || statusText.contains("正在验证") || statusText.contains("正在校驗")) {
                 binding.txtVerificationStatus.text = res.getString(R.string.verifying_server)
             } else if (statusText.contains("successful") || statusText.contains("成功")) {
                 binding.txtVerificationStatus.text = res.getString(R.string.verification_success)
-            } else if (statusText.contains("Failed") || statusText.contains("失败")) {
+            } else if (statusText.contains("Failed") || statusText.contains("失败") || statusText.contains("失敗")) {
                 binding.txtVerificationStatus.text = res.getString(R.string.verification_failed)
             }
         }
@@ -633,6 +669,12 @@ class MainActivity : AppCompatActivity() {
     private fun setupControlListeners() {
         binding.btnLangZhToggle.setOnClickListener {
             tempSelectedLang = "zh"
+            updateLanguageToggleUI(tempSelectedLang)
+            applyLanguageToSettingsUI(tempSelectedLang)
+        }
+
+        binding.btnLangZhTwToggle.setOnClickListener {
+            tempSelectedLang = "zh-rTW"
             updateLanguageToggleUI(tempSelectedLang)
             applyLanguageToSettingsUI(tempSelectedLang)
         }
@@ -833,7 +875,8 @@ class MainActivity : AppCompatActivity() {
      * Shows a beautiful, high-end dialog explaining Demo Mode, PRO features, and limitations.
      */
     private fun showDemoModeIntroductionDialog(onConfirm: (android.app.Dialog) -> Unit) {
-        val isZh = tempSelectedLang == "zh"
+        val isTraditional = tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+        val isZh = tempSelectedLang == "zh" || isTraditional
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setCancelable(false)
         
@@ -865,7 +908,11 @@ class MainActivity : AppCompatActivity() {
             addView(progressBar)
             
             val loadingText = android.widget.TextView(this@MainActivity).apply {
-                text = if (isZh) "正在安全认证演示系统..." else "AUTHENTICATING DEMO SHIELD..."
+                text = when {
+                    isTraditional -> "正在安全認證演示系統..."
+                    isZh -> "正在安全认证演示系统..."
+                    else -> "AUTHENTICATING DEMO SHIELD..."
+                }
                 textSize = 14f
                 setTextColor(Color.parseColor("#00E5FF"))
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -875,7 +922,11 @@ class MainActivity : AppCompatActivity() {
             addView(loadingText)
             
             val loadingSubText = android.widget.TextView(this@MainActivity).apply {
-                text = if (isZh) "正在为您跨国建立安全加密信道" else "Establishing overseas secure encrypted tunnel"
+                text = when {
+                    isTraditional -> "正在為您跨國建立安全加密信道"
+                    isZh -> "正在为您跨国建立安全加密信道"
+                    else -> "Establishing overseas secure encrypted tunnel"
+                }
                 textSize = 11f
                 setTextColor(Color.GRAY)
                 typeface = android.graphics.Typeface.MONOSPACE
@@ -904,7 +955,11 @@ class MainActivity : AppCompatActivity() {
         headerView.addView(shieldIcon)
         
         val titleText = android.widget.TextView(this).apply {
-            text = if (isZh) "💡 AURA Grid PRO 演示沙盒体验指南" else "💡 AURA Grid PRO Public Demo Guide"
+            text = when {
+                isTraditional -> "💡 AURA Grid PRO 演示沙盒體驗指南"
+                isZh -> "💡 AURA Grid PRO 演示沙盒体验指南"
+                else -> "💡 AURA Grid PRO Public Demo Guide"
+            }
             textSize = 20f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -962,10 +1017,10 @@ class MainActivity : AppCompatActivity() {
         }
         
         val introText = android.widget.TextView(this).apply {
-            text = if (isZh) {
-                "欢迎体验 AURA Grid 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
-            } else {
-                "Welcome to AURA Grid Companion Terminal! You are entering the public sandbox. Please read the following guidelines:"
+            text = when {
+                isTraditional -> "歡迎體驗 AURA Grid 智能中控伴侶終端！您即將進入公網演示沙盒系統。為了保障您的體驗，请知悉以下事項："
+                isZh -> "欢迎体验 AURA Grid 智能中控伴侣终端！您即将进入公网演示沙盒系统。为了保障您的体验，请知悉以下事项："
+                else -> "Welcome to AURA Grid Companion Terminal! You are entering the public sandbox. Please read the following guidelines:"
             }
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
@@ -1039,48 +1094,73 @@ class MainActivity : AppCompatActivity() {
             contentLayout.addView(itemLayout)
         }
         
-        if (isZh) {
-            addFeatureItem(
-                "1️⃣",
-                "尊享 PRO 全功能体验",
-                "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！"
-            )
-            addFeatureItem(
-                "2️⃣",
-                "零风险仿真沙盒运行",
-                "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！"
-            )
-            addFeatureItem(
-                "3️⃣",
-                "布局只读保护限制",
-                "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。"
-            )
-            addFeatureItem(
-                "⚙️",
-                "如何退出演示模式",
-                "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择“一键退出演示模式”即可。"
-            )
-        } else {
-            addFeatureItem(
-                "1️⃣",
-                "Full PRO Feature Access",
-                "All PRO commercial edition features are fully enabled here. Feel free to explore multi-floor integration, custom canvas layout widgets, security cockpit, and dynamic weather animations!"
-            )
-            addFeatureItem(
-                "2️⃣",
-                "Zero-Risk Simulation Sandbox",
-                "Connected to a fully simulated mock data environment. Any toggle, dimming or scene switching commands are completely safe and will not affect any real physical hardware."
-            )
-            addFeatureItem(
-                "3️⃣",
-                "Read-Only Configuration Limits",
-                "To keep the public dashboard clean for everyone, saving layouts and uploading files are disabled."
-            )
-            addFeatureItem(
-                "⚙️",
-                "How to Exit Demo Mode",
-                "Tip: If you need to exit demo mode, simply [triple-tap with three fingers] anywhere on the screen to invoke the admin settings, then select 'Exit Demo Mode'."
-            )
+        when {
+            isTraditional -> {
+                addFeatureItem(
+                    "1️⃣",
+                    "尊享 PRO 全功能體驗",
+                    "本演示系統已全面啟用 PRO 商業版全部高級特性。您可以自由體驗多樓層連動、自定義畫布組件、安全中心駕駛艙、實時高幀率天氣動畫系統等全套工業級功能！"
+                )
+                addFeatureItem(
+                    "2️⃣",
+                    "零風險仿真沙盒運行",
+                    "此環境連接的是獨立的虛擬仿真數據源，您的任何開關控制、場景切換等控制指令都是完全安全的，不會影響任何真實物理設備，請盡情點擊測試！"
+                )
+                addFeatureItem(
+                    "3️⃣",
+                    "布局唯讀保護限制",
+                    "為保護公共演示界面的整潔，本模式下不支持永久保存布局修改或上傳底圖資產。"
+                )
+                addFeatureItem(
+                    "⚙️",
+                    "如何退出演示模式",
+                    "提示：如果您需要退出演示模式，請使用【三根手指在屏幕任意位置連續敲擊 3 次】即可呼出后台管理設置菜單，選擇“一鍵退出演示模式”即可。"
+                )
+            }
+            isZh -> {
+                addFeatureItem(
+                    "1️⃣",
+                    "尊享 PRO 全功能体验",
+                    "本演示系统已全面启用 PRO 商业版全部高级特性。您可以自由体验多楼层联动、自定义画布组件、安全中心驾驶舱、实时高帧率天气动画系统等全套工业级功能！"
+                )
+                addFeatureItem(
+                    "2️⃣",
+                    "零风险仿真沙盒运行",
+                    "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！"
+                )
+                addFeatureItem(
+                    "3️⃣",
+                    "布局只读保护限制",
+                    "为保护公共演示界面的整洁，本模式下不支持永久保存布局修改或上传底图资产。"
+                )
+                addFeatureItem(
+                    "⚙️",
+                    "如何退出演示模式",
+                    "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择“键退出演示模式”即可。"
+                )
+            }
+            else -> {
+                addFeatureItem(
+                    "1️⃣",
+                    "Full PRO Feature Access",
+                    "All PRO commercial edition features are fully enabled here. Feel free to explore multi-floor integration, custom canvas layout widgets, security cockpit, and dynamic weather animations!"
+                )
+                addFeatureItem(
+                    "2️⃣",
+                    "Zero-Risk Simulation Sandbox",
+                    "Connected to a fully simulated mock data environment. Any toggle, dimming or scene switching commands are completely safe and will not affect any real physical hardware."
+                )
+                addFeatureItem(
+                    "3️⃣",
+                    "Read-Only Configuration Limits",
+                    "To keep the public dashboard clean for everyone, saving layouts and uploading files are disabled."
+                )
+                addFeatureItem(
+                    "⚙️",
+                    "How to Exit Demo Mode",
+                    "Tip: If you need to exit demo mode, simply [triple-tap with three fingers] anywhere on the screen to invoke the admin settings, then select 'Exit Demo Mode'."
+                )
+            }
         }
         
         scrollView.addView(contentLayout)
@@ -1117,7 +1197,11 @@ class MainActivity : AppCompatActivity() {
         }
         
         val enterButton = android.widget.Button(this).apply {
-            text = if (isZh) "同意并立即进入体验" else "AGREE & ENTER DEMO MODE"
+            text = when {
+                isTraditional -> "同意並立即進入體驗"
+                isZh -> "同意并立即进入体验"
+                else -> "AGREE & ENTER DEMO MODE"
+            }
             textSize = 14f
             setTextColor(Color.BLACK)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1151,7 +1235,11 @@ class MainActivity : AppCompatActivity() {
         buttonsLayout.addView(enterButton)
         
         val cancelButton = android.widget.TextView(this).apply {
-            text = if (isZh) "取消" else "CANCEL"
+            text = when {
+                isTraditional -> "取消"
+                isZh -> "取消"
+                else -> "CANCEL"
+            }
             textSize = 13f
             setTextColor(Color.parseColor("#8E8E93"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1277,22 +1365,36 @@ class MainActivity : AppCompatActivity() {
      * Updates the segmented capsule language switcher UI toggle states dynamically.
      */
     private fun updateLanguageToggleUI(lang: String) {
-        if (lang == "zh") {
-            binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
-            binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
-            binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+        // Reset all buttons first
+        binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
 
-            binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
-            binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
-        } else {
-            binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
-            binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
+        binding.btnLangZhTwToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnLangZhTwToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnLangZhTwToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
 
-            binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
-            binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
-            binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+        binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        // Highlight selected
+        when (lang) {
+            "zh-rTW", "zh-TW" -> {
+                binding.btnLangZhTwToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnLangZhTwToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnLangZhTwToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            "en" -> {
+                binding.btnLangEnToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnLangEnToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnLangEnToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            else -> { // Default "zh"
+                binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
         }
     }
 
