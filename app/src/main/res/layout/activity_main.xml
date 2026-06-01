@@ -126,11 +126,24 @@
                             android:id="@+id/btnLangZhToggle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="中"
+                            android:text="简"
                             android:textColor="@color/black"
                             android:textSize="12sp"
                             android:textStyle="bold"
                             android:background="@color/neon_teal"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="4dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+
+                        <TextView
+                            android:id="@+id/btnLangZhTwToggle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="繁"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:background="@android:color/transparent"
                             android:paddingHorizontal="12dp"
                             android:paddingVertical="4dp"
                             android:clickable="true"
@@ -308,6 +321,62 @@
                     android:layout_marginTop="28dp"
                     android:orientation="horizontal"
                     android:gravity="end">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnQuickDemo"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="一键进入演示系统"
+                        android:textColor="@color/neon_teal"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="@color/neon_teal"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_media_play"
+                        app:iconTint="@color/neon_teal"
+                        app:iconPadding="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnExitDemo"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="一键退出演示系统"
+                        android:textColor="#FF3333"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="#FF3333"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_menu_close_clear_cancel"
+                        app:iconTint="#FF3333"
+                        app:iconPadding="4dp"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnWipeData"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="擦除数据并退出"
+                        android:textColor="#FF3333"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="#FF3333"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_menu_delete"
+                        app:iconTint="#FF3333"
+                        app:iconPadding="4dp"
+                        android:visibility="gone" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
 
                     <Button
                         android:id="@+id/btnCancelSettings"

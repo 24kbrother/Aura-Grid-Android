@@ -27,4 +27,14 @@ local.properties
 # Local confidential design plans and architecture trace logs
 local_designs/
 
+# Local temporary development plans, tasks, and reports
+task.md
+walkthrough.md
+implementation_plan.md
+*_plan.md
+*evaluation*.md
+
+# Exclude compiled output APKs and distributions to prevent bloat
+/outputs/
+
 

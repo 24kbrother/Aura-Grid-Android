@@ -1,0 +1,35 @@
+<resources>
+    <string name="app_name">Aura Grid</string>
+    <string name="app_version">v2.1.0-OTA</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Aura Grid 伴侶端設置</string>
+    <string name="settings_desc">配置伺服器路由以及運行模式</string>
+    <string name="server_lan_url">局域網 LAN 伺服器地址</string>
+    <string name="server_wan_url">廣域網 WAN 伺服器地址</string>
+    <string name="username">操作員賬號</string>
+    <string name="password">安全密鑰 / 密碼</string>
+    <string name="device_mode">終端運行模式</string>
+    <string name="mode_kiosk">掛牆防誤觸 (保持屏幕常亮)</string>
+    <string name="mode_companion">移動端伴侶 (隨手控)</string>
+    <string name="system_language">系统语言 / 系統語言</string>
+    <string name="lang_zh">中文 (繁體)</string>
+    <string name="lang_en">English</string>
+    <string name="cancel">取消</string>
+    <string name="save_settings">確認儲存</string>
+    <string name="save_anyway">強制儲存</string>
+    <string name="verifying_server">正在校驗伺服器連接與操作員授權...</string>
+    <string name="verification_success">安全驗證成功！</string>
+    <string name="verification_failed">無法連接或驗證失敗。請檢查輸入，或點擊「強制儲存」跳過校驗。</string>
+    <string name="lan_url_required">必須填寫局域網 LAN 地址</string>
+    
+    <!-- Connection States -->
+    <string name="connecting">正在建立與 Aura Grid 閘道的安全連接...</string>
+    <string name="connection_failed">終端安全連接中斷</string>
+    <string name="reconnecting">正在嘗試自動恢復連接 (3s)...</string>
+    <string name="check_network">請驗證伺服器路由或檢查本地網絡狀態。</string>
+    
+    <!-- OTA Upgrade Screen -->
+    <string name="system_upgrade">系統 OTA 固件升級</string>
+    <string name="downloading_update">正在下載 Aura Grid 終端更新包...</string>
+</resources>

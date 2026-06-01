@@ -46,6 +46,10 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.webkit:webkit:1.10.0")
 
+    // OkHttp & Gson for asynchronous upgrade checks and JSON parsing
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+
     // Socket.IO Client for Real-time LAN connection
     implementation("io.socket:socket.io-client:2.1.1") {
         exclude(group = "org.json", module = "json")

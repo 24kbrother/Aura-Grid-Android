@@ -80,6 +80,7 @@ class NetworkRoamingManager(private val context: Context) {
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs
             connection.requestMethod = "HEAD" // Keep request payload ultra-low
+            connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Mobile)")
             connection.connect()
             
             // Any response code between 200 and 499 indicates the server is alive

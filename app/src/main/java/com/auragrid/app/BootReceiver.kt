@@ -21,6 +21,14 @@ class BootReceiver : BroadcastReceiver() {
 
             // Retrieve saved settings configuration to pass active server addresses
             val sharedPreferences = context.getSharedPreferences("AuraGridPreferences", Context.MODE_PRIVATE)
+            
+            // Strict check: if user has not accepted privacy policy yet, do not start foreground service
+            val privacyAccepted = sharedPreferences.getBoolean("privacy_accepted", false)
+            if (!privacyAccepted) {
+                Log.w("AuraBootReceiver", "Privacy Policy not accepted yet. Aborting auto-start of services on boot.")
+                return
+            }
+
             val lanUrl = sharedPreferences.getString("server_lan_url", "http://10.0.0.90:3001") ?: "http://10.0.0.90:3001"
 
             val serviceIntent = Intent(context, AuraSocketService::class.java).apply {
