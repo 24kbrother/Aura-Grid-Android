@@ -73,6 +73,17 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Check privacy policy acceptance before initializing any services or network
+        val privacyAccepted = sharedPreferences.getBoolean("privacy_accepted", false)
+        if (!privacyAccepted) {
+            Log.i("MainActivity", "Privacy Policy not accepted yet. Displaying dialog blocker.")
+            showPrivacyPolicyDialog()
+        } else {
+            initializeAfterPrivacy()
+        }
+    }
+
+    private fun initializeAfterPrivacy() {
         // Load other configuration values
         loadSavedConfig()
 
@@ -107,6 +118,272 @@ class MainActivity : AppCompatActivity() {
 
         // 8. Handle any incoming deep-link intents (e.g., notification clicks)
         handleIntent(intent)
+
+        // 9. Asynchronously check for GitHub OTA updates 2 seconds after boot
+        recoveryHandler.postDelayed({
+            checkOtaUpdates()
+        }, 2000L)
+    }
+
+    /**
+     * Checks for GitHub Releases OTA Updates.
+     */
+    fun checkOtaUpdates() {
+        Log.i("MainActivity", "Triggering asynchronous GitHub OTA update check...")
+        val context = this@MainActivity
+        com.auragrid.app.update.UpdateService.checkForUpdates(context, object : com.auragrid.app.update.UpdateService.UpdateCallback {
+            override fun onUpdateAvailable(remoteVersion: String, downloadUrl: String, notes: String, sizeBytes: Long) {
+                val currentVer = try {
+                    val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                    packageInfo.versionName ?: "2.1.0-OTA"
+                } catch (e: Exception) {
+                    "2.1.0-OTA"
+                }
+                
+                com.auragrid.app.update.UpdateDialog.show(
+                    activity = this@MainActivity,
+                    binding = binding,
+                    currentVersion = currentVer,
+                    remoteVersion = remoteVersion,
+                    notes = notes,
+                    sizeBytes = sizeBytes,
+                    downloadUrl = downloadUrl
+                )
+            }
+
+            override fun onNoUpdate() {
+                Log.d("MainActivity", "OTA update check: App is already up-to-date.")
+            }
+
+            override fun onError(error: String) {
+                Log.w("MainActivity", "OTA update check failed: $error")
+            }
+        })
+    }
+
+    /**
+     * Renders a highly polished Cyberpunk/Material style dialog blocking app access
+     * until the Privacy Policy is explicitly accepted. Matches the big-screen aesthetic.
+     */
+    private fun showPrivacyPolicyDialog() {
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setCancelable(false)
+
+        val isTraditional = tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+        val isZh = tempSelectedLang == "zh" || isTraditional
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#08080C"))
+            setPadding(48, 48, 48, 48)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+        }
+
+        val iconView = android.widget.TextView(this).apply {
+            text = "🛡️"
+            textSize = 48f
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 40
+            }
+        }
+        container.addView(iconView)
+
+        val titleText = android.widget.TextView(this).apply {
+            text = when {
+                isTraditional -> "Aura Grid 隱私協議與授權聲明"
+                isZh -> "Aura Grid 隐私协议与授权声明"
+                else -> "Privacy Policy & Authorization Terms"
+            }
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 16
+            }
+        }
+        container.addView(titleText)
+
+        val subtitleText = android.widget.TextView(this).apply {
+            text = "AURA-GRID-PRIVACY-SECURITY-POLICY"
+            textSize = 9f
+            setTextColor(Color.parseColor("#00E5FF"))
+            typeface = android.graphics.Typeface.MONOSPACE
+            letterSpacing = 0.2f
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 8
+            }
+        }
+        container.addView(subtitleText)
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                0
+            ).apply {
+                weight = 1f
+                topMargin = 32
+                bottomMargin = 32
+            }
+            isVerticalScrollBarEnabled = false
+        }
+
+        val cardLayout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#0DFFFFFF"))
+                setStroke(2, Color.parseColor("#2600E5FF"))
+                cornerRadius = 24f
+            }
+        }
+
+        val privacyBody = android.widget.TextView(this).apply {
+            text = when {
+                isTraditional -> """
+                    歡迎使用 Aura Grid 伴侶終端！我們高度重視您的個人隱私與數據安全。在您同意本協議前，應用程序不會初始化任何第三方 SDK 或是發起任何網絡通訊。
+
+                    請您仔細閱讀以下關鍵條款：
+                    
+                    1. 數據收集範圍
+                    我們僅收集運行所必需的本地配置信息，包括局域網/公網網關地址、用於身份校驗的加密憑據，以及可選的推送服務（FCM/HMS）唯一標識符。
+                    
+                    2. 硬件指紋與密鑰審計
+                    為確保 Pro 版商業授權的安全性，我們會生成 Settings.Secure.ANDROID_ID 的 SHA-256 單向哈希值，作為本設備的唯一硬件指纹（HWID）。該哈希值不可反向還原，僅用於 RSA 安全認證與心跳審計，絕不包含任何個人身份隱私。
+                    
+                    3. 本地化安全存儲
+                    您的所有服務器賬號與密碼均通過 Android SharedPreferences 進行本機加密隔離存儲。WebView 中的會話緩存與 Token 同样受到系統沙盒保護。
+                    
+                    4. 數據零共享
+                    本應用為 100% 私有化或直連您的專屬閘道運行。我們承諾絕不會向任何第三方機構或個人透露、銷售或共享您的任何配置、密鑰或傳感器遙測數據。
+
+                    點擊「同意並繼續」即代表您接受以上隱私協議與服務條款，我們將為您解鎖完整的賽博科技中控體驗。
+                """.trimIndent()
+                isZh -> """
+                    欢迎使用 Aura Grid 伴侣终端！我们高度重视您的个人隐私与数据安全。在您同意本协议前，应用程序不会初始化任何第三方 SDK 或是发起任何网络通讯。
+
+                    请您仔细阅读以下关键条款：
+                    
+                    1. 数据收集范围
+                    我们仅收集运行所必需的本地配置信息，包括局域网/公网网关地址、用于身份校验的加密凭据，以及可选的推送服务（FCM/HMS）唯一标识符。
+                    
+                    2. 硬件指纹与密钥审计
+                    为确保 Pro 版商业授权的安全性，我们会生成 Settings.Secure.ANDROID_ID 的 SHA-256 单向哈希值，作为本设备的唯一硬件指纹（HWID）。该哈希值不可反向还原，仅用于 RSA 安全认证与心跳审计，绝不包含任何个人身份隐私。
+                    
+                    3. 本地化安全存储
+                    您的所有服务器账号与密码均通过 Android SharedPreferences 进行本机加密隔离存储。WebView 中的会话缓存与 Token 同样受到系统沙盒保护。
+                    
+                    4. 数据零共享
+                    本应用为 100% 私有化或直连您的专属网关运行。我们承诺绝不会向任何第三方机构或个人透露、销售或共享您的任何配置、密钥或传感器遥测数据。
+
+                    点击“同意并继续”即代表您接受以上隐私协议与服务条款，我们将为您解锁完整的赛博科技中控体验。
+                """.trimIndent()
+                else -> """
+                    Welcome to Aura Grid Companion! We highly value your personal privacy and data security. Before you agree to this policy, the app will not initialize any third-party SDKs or make any outbound network requests.
+
+                    Please read our core terms carefully:
+                    
+                    1. Data Collection Scope
+                    We only collect basic configurations required for operations, including your local LAN/WAN gateway addresses, encrypted credentials for authentication, and optional push service (FCM/HMS) tokens.
+                    
+                    2. Hardware Fingerprint & Audit
+                    To verify Pro commercial licenses, we generate a one-way SHA-256 hash of Settings.Secure.ANDROID_ID to serve as your hardware fingerprint (HWID). This hash cannot be reversed and is used solely for secure RSA handshakes and heartbeat audits.
+                    
+                    3. Encrypted Local Storage
+                    All server credentials and passwords are encrypted and isolated locally using SharedPreferences. WebView session caches and tokens are similarly shielded in the OS sandbox.
+                    
+                    4. Zero Third-Party Sharing
+                    Aura Grid operates as a 100% private, direct connection tool to your smart home. We pledge never to share, sell, or disclose your gateway information, telemetry, or keys to any third party.
+
+                    Clicking "Agree & Continue" means you accept these terms, and we will unlock the complete smart home experience for you.
+                """.trimIndent()
+            }
+            textSize = 13f
+            setTextColor(Color.parseColor("#8E8E93"))
+            setLineSpacing(0f, 1.3f)
+        }
+        cardLayout.addView(privacyBody)
+        scrollView.addView(cardLayout)
+        container.addView(scrollView)
+
+        val buttonsLayout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 16
+            }
+        }
+
+        val agreeButton = android.widget.Button(this).apply {
+            text = when {
+                isTraditional -> "同意並繼續"
+                isZh -> "同意并继续"
+                else -> "AGREE & CONTINUE"
+            }
+            textSize = 14f
+            setTextColor(Color.BLACK)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.parseColor("#00E5FF"), Color.parseColor("#0086FF"))
+            ).apply {
+                cornerRadius = 16f
+            }
+
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                120
+            ).apply {
+                bottomMargin = 24
+            }
+
+            setOnClickListener {
+                dialog.dismiss()
+                sharedPreferences.edit().putBoolean("privacy_accepted", true).apply()
+                initializeAfterPrivacy()
+            }
+        }
+        buttonsLayout.addView(agreeButton)
+
+        val disagreeButton = android.widget.TextView(this).apply {
+            text = when {
+                isTraditional -> "不同意並退出"
+                isZh -> "不同意并退出"
+                else -> "DISAGREE & EXIT"
+            }
+            textSize = 13f
+            setTextColor(Color.parseColor("#8E8E93"))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            setPadding(24, 24, 24, 24)
+            isClickable = true
+
+            setOnClickListener {
+                dialog.dismiss()
+                finishAffinity()
+            }
+        }
+        buttonsLayout.addView(disagreeButton)
+
+        container.addView(buttonsLayout)
+
+        dialog.setContentView(container)
+        dialog.show()
     }
 
     override fun onResume() {
@@ -1605,96 +1882,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun startUpgradeFlow(downloadUrl: String) {
-        runOnUiThread {
-            binding.downloadOverlay.visibility = View.VISIBLE
-            binding.downloadProgressBar.isIndeterminate = true
-            binding.downloadProgressBar.progress = 0
-            binding.downloadPercent.text = "0%"
-            binding.downloadSpeed.text = "Connecting..."
-            binding.downloadStatus.text = "Initializing download..."
-        }
-
-        executor.submit {
-            var connection: java.net.HttpURLConnection? = null
-            var input: java.io.InputStream? = null
-            var output: java.io.FileOutputStream? = null
-            val apkFile = File(cacheDir, "aura_grid_update.apk")
-
-            try {
-                if (apkFile.exists()) {
-                    apkFile.delete()
-                }
-
-                val url = URL(downloadUrl)
-                connection = url.openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
-                connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Mobile)")
-                connection.connect()
-
-                if (connection.responseCode != java.net.HttpURLConnection.HTTP_OK) {
-                    throw java.io.IOException("Server returned HTTP ${connection.responseCode}")
-                }
-
-                val fileLength = connection.contentLength
-                input = connection.inputStream
-                output = FileOutputStream(apkFile)
-
-                val data = ByteArray(4096)
-                var total: Long = 0
-                var count: Int
-                val startTime = System.currentTimeMillis()
-
-                runOnUiThread {
-                    binding.downloadProgressBar.isIndeterminate = fileLength <= 0
-                    binding.downloadStatus.text = "Downloading OTA package..."
-                }
-
-                while (input.read(data).also { count = it } != -1) {
-                    total += count
-                    output.write(data, 0, count)
-
-                    if (fileLength > 0) {
-                        val progress = (total * 100 / fileLength).toInt()
-                        val elapsedTime = (System.currentTimeMillis() - startTime) / 1000.0
-                        val speedKbps = if (elapsedTime > 0) (total / 1024.0 / elapsedTime).toInt() else 0
-                        val speedText = if (speedKbps > 1024) String.format("%.2f MB/s", speedKbps / 1024.0) else "$speedKbps KB/s"
-                        
-                        runOnUiThread {
-                            binding.downloadProgressBar.progress = progress
-                            binding.downloadPercent.text = "$progress%"
-                            binding.downloadSpeed.text = speedText
-                        }
-                    } else {
-                        val downloadedMb = total / 1024.0 / 1024.0
-                        runOnUiThread {
-                            binding.downloadPercent.text = String.format("%.1f MB", downloadedMb)
-                            binding.downloadSpeed.text = "Downloading..."
-                        }
-                    }
-                }
-
-                output.flush()
-                
-                runOnUiThread {
-                    binding.downloadOverlay.visibility = View.GONE
-                    installApk(apkFile)
-                }
-
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Download failed: ${e.message}")
-                runOnUiThread {
-                    binding.downloadOverlay.visibility = View.GONE
-                    Toast.makeText(this@MainActivity, "Download failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                }
-            } finally {
-                try {
-                    output?.close()
-                    input?.close()
-                } catch (ignored: Exception) {}
-                connection?.disconnect()
-            }
-        }
+        com.auragrid.app.update.ApkDownloader.startDownload(this, binding, downloadUrl)
     }
 
     override fun onDestroy() {
