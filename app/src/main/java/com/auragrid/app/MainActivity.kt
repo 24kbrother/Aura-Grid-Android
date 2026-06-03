@@ -119,19 +119,21 @@ class MainActivity : AppCompatActivity() {
 
         // 8. Handle any incoming deep-link intents (e.g., notification clicks)
         handleIntent(intent)
-
-        // 9. Asynchronously check for GitHub OTA updates 2 seconds after boot
-        recoveryHandler.postDelayed({
-            checkOtaUpdates()
-        }, 2000L)
     }
 
     /**
      * Checks for GitHub Releases OTA Updates.
      */
-    fun checkOtaUpdates() {
-        Log.i("MainActivity", "Triggering asynchronous GitHub OTA update check...")
+    fun checkOtaUpdates(manualTrigger: Boolean = false) {
+        Log.i("MainActivity", "Triggering asynchronous GitHub OTA update check (manual=$manualTrigger)...")
         val context = this@MainActivity
+        
+        if (manualTrigger) {
+            runOnUiThread {
+                Toast.makeText(context, getString(R.string.checking_updates), Toast.LENGTH_SHORT).show()
+            }
+        }
+        
         com.auragrid.app.update.UpdateService.checkForUpdates(context, object : com.auragrid.app.update.UpdateService.UpdateCallback {
             override fun onUpdateAvailable(remoteVersion: String, downloadUrl: String, notes: String, sizeBytes: Long) {
                 val currentVer = try {
@@ -154,10 +156,20 @@ class MainActivity : AppCompatActivity() {
 
             override fun onNoUpdate() {
                 Log.d("MainActivity", "OTA update check: App is already up-to-date.")
+                if (manualTrigger) {
+                    runOnUiThread {
+                        Toast.makeText(context, getString(R.string.no_updates_available), Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
 
             override fun onError(error: String) {
                 Log.w("MainActivity", "OTA update check failed: $error")
+                if (manualTrigger) {
+                    runOnUiThread {
+                        Toast.makeText(context, getString(R.string.update_check_failed), Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         })
     }
@@ -914,6 +926,7 @@ class MainActivity : AppCompatActivity() {
             "zh" -> "擦除数据并退出"
             else -> "ERASE DATA & EXIT"
         }
+        binding.btnCheckUpdate.text = res.getString(R.string.check_updates)
         
         // Handle "Save Config" vs "Save Anyway"
         val currentBtnText = binding.btnSaveSettings.text.toString()
@@ -1145,6 +1158,10 @@ class MainActivity : AppCompatActivity() {
             }
             clearAppCacheAndWebView(this)
             recreate()
+        }
+
+        binding.btnCheckUpdate.setOnClickListener {
+            checkOtaUpdates(manualTrigger = true)
         }
     }
 

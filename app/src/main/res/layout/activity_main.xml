@@ -373,6 +373,23 @@
                         app:iconPadding="4dp"
                         android:visibility="gone" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCheckUpdate"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="检查更新"
+                        android:textColor="@color/neon_teal"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:strokeColor="@color/neon_teal"
+                        app:strokeWidth="1.5dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_popup_sync"
+                        app:iconTint="@color/neon_teal"
+                        app:iconPadding="4dp" />
+
                     <View
                         android:layout_width="0dp"
                         android:layout_height="0dp"

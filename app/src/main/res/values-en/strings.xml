@@ -32,4 +32,10 @@
     <!-- OTA Upgrade Screen -->
     <string name="system_upgrade">System Upgrade</string>
     <string name="downloading_update">Downloading Aura Grid Kiosk Update...</string>
+
+    <!-- OTA Upgrade Manual Buttons -->
+    <string name="check_updates">Check Updates</string>
+    <string name="checking_updates">Checking for updates...</string>
+    <string name="no_updates_available">Current version is up-to-date.</string>
+    <string name="update_check_failed">Failed to check updates.</string>
 </resources>

@@ -32,4 +32,10 @@
     <!-- OTA Upgrade Screen -->
     <string name="system_upgrade">系統 OTA 固件升級</string>
     <string name="downloading_update">正在下載 Aura Grid 終端更新包...</string>
+
+    <!-- OTA Upgrade Manual Buttons -->
+    <string name="check_updates">檢查更新</string>
+    <string name="checking_updates">正在檢查更新...</string>
+    <string name="no_updates_available">當前已是最新版本。</string>
+    <string name="update_check_failed">檢查更新失敗。</string>
 </resources>
