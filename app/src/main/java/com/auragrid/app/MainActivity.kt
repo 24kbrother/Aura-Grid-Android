@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var isKioskMode = true
     private var activeUrl = ""
     private var tempSelectedLang = "zh"
+    private var tempSelectedZoom = 100
 
     private var isErrorState = false
     private val recoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -471,6 +472,9 @@ class MainActivity : AppCompatActivity() {
         tempSelectedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
         updateLanguageToggleUI(tempSelectedLang)
 
+        tempSelectedZoom = sharedPreferences.getInt("web_zoom_level", 100)
+        updateZoomToggleUI(tempSelectedZoom)
+
         if (isKioskMode) {
             binding.radioKiosk.isChecked = true
         } else {
@@ -481,7 +485,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Commits configuration values to local storage.
      */
-    private fun saveConfig(newLan: String, newWan: String, user: String, pass: String, token: String, newKiosk: Boolean, newLang: String) {
+    private fun saveConfig(newLan: String, newWan: String, user: String, pass: String, token: String, newKiosk: Boolean, newLang: String, newZoom: Int) {
         lanUrl = newLan
         wanUrl = newWan
         isKioskMode = newKiosk
@@ -494,6 +498,7 @@ class MainActivity : AppCompatActivity() {
             putString("auth_token", token)
             putBoolean("is_kiosk_mode", isKioskMode)
             putString("app_language", newLang)
+            putInt("web_zoom_level", newZoom)
             putBoolean("is_configured", true)
             apply()
         }
@@ -554,6 +559,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupWebView() {
         // Enforce maximum GPU and composition rendering acceleration
         binding.webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
+        val zoomLevel = sharedPreferences.getInt("web_zoom_level", 100)
+        binding.webView.setInitialScale(zoomLevel)
 
         binding.webView.settings.apply {
             javaScriptEnabled = true
@@ -927,6 +935,7 @@ class MainActivity : AppCompatActivity() {
             else -> "ERASE DATA & EXIT"
         }
         binding.btnCheckUpdate.text = res.getString(R.string.check_updates)
+        binding.txtWebZoomLabel.text = res.getString(R.string.web_zoom)
         
         // Handle "Save Config" vs "Save Anyway"
         val currentBtnText = binding.btnSaveSettings.text.toString()
@@ -975,6 +984,31 @@ class MainActivity : AppCompatActivity() {
             applyLanguageToSettingsUI(tempSelectedLang)
         }
 
+        binding.btnZoom75.setOnClickListener {
+            tempSelectedZoom = 75
+            updateZoomToggleUI(tempSelectedZoom)
+        }
+
+        binding.btnZoom90.setOnClickListener {
+            tempSelectedZoom = 90
+            updateZoomToggleUI(tempSelectedZoom)
+        }
+
+        binding.btnZoom100.setOnClickListener {
+            tempSelectedZoom = 100
+            updateZoomToggleUI(tempSelectedZoom)
+        }
+
+        binding.btnZoom115.setOnClickListener {
+            tempSelectedZoom = 115
+            updateZoomToggleUI(tempSelectedZoom)
+        }
+
+        binding.btnZoom130.setOnClickListener {
+            tempSelectedZoom = 130
+            updateZoomToggleUI(tempSelectedZoom)
+        }
+
         binding.btnCancelSettings.setOnClickListener {
             toggleSettingsOverlay(false)
         }
@@ -997,7 +1031,7 @@ class MainActivity : AppCompatActivity() {
 
             // If the user chooses to bypass verification or did not enter credentials, save directly
             if (isAnyway || userStr.isEmpty()) {
-                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang)
+                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang, tempSelectedZoom)
                 toggleSettingsOverlay(false)
                 return@setOnClickListener
             }
@@ -1028,7 +1062,7 @@ class MainActivity : AppCompatActivity() {
                         binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
                         
                         // Save config with verified token
-                        saveConfig(lanStr, wanStr, userStr, passStr, finalToken, isKiosk, selectedLang)
+                        saveConfig(lanStr, wanStr, userStr, passStr, finalToken, isKiosk, selectedLang, tempSelectedZoom)
                         
                         // Close settings after a small delay
                         binding.txtVerificationStatus.postDelayed({
@@ -1111,7 +1145,7 @@ class MainActivity : AppCompatActivity() {
                             toggleSettingsOverlay(false)
                             binding.btnCancelSettings.visibility = View.VISIBLE
                             
-                            saveConfig("https://demo2.iaura.cn", "https://demo2.iaura.cn", "admin", "123456", finalToken, isKiosk, tempSelectedLang)
+                            saveConfig("https://demo2.iaura.cn", "https://demo2.iaura.cn", "admin", "123456", finalToken, isKiosk, tempSelectedLang, tempSelectedZoom)
                         } else {
                             // Restore dialog UI and display error message inside full-screen dialog
                             val scrollView = dialog.findViewById<android.widget.ScrollView>(10001)
@@ -1688,6 +1722,61 @@ class MainActivity : AppCompatActivity() {
                 binding.btnLangZhToggle.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
                 binding.btnLangZhToggle.setTextColor(android.graphics.Color.parseColor("#000000"))
                 binding.btnLangZhToggle.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+        }
+    }
+
+    /**
+     * Updates the segmented web zoom switcher UI toggle states dynamically.
+     */
+    private fun updateZoomToggleUI(zoom: Int) {
+        // Reset all segments
+        binding.btnZoom75.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom75.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom75.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom90.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom90.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom90.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom100.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom100.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom100.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom115.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom115.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom115.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom130.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom130.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom130.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        // Highlight selected
+        when (zoom) {
+            75 -> {
+                binding.btnZoom75.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom75.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom75.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            90 -> {
+                binding.btnZoom90.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom90.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom90.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            115 -> {
+                binding.btnZoom115.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom115.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom115.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            130 -> {
+                binding.btnZoom130.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom130.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom130.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            else -> { // Default 100
+                binding.btnZoom100.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom100.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom100.setTypeface(null, android.graphics.Typeface.BOLD)
             }
         }
     }

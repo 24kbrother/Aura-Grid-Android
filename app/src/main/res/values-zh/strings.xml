@@ -38,4 +38,6 @@
     <string name="checking_updates">正在检查更新...</string>
     <string name="no_updates_available">当前已是最新版本。</string>
     <string name="update_check_failed">检查更新失败。</string>
+
+    <string name="web_zoom">网页缩放比例</string>
 </resources>

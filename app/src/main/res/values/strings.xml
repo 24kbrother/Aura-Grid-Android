@@ -38,4 +38,6 @@
     <string name="checking_updates">Checking for updates...</string>
     <string name="no_updates_available">Current version is up-to-date.</string>
     <string name="update_check_failed">Failed to check updates.</string>
+
+    <string name="web_zoom">Web Zoom Scale</string>
 </resources>
