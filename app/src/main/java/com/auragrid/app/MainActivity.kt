@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private var isErrorState = false
     private val recoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val recoveryRunnable = Runnable { attemptAutoRecovery() }
+    private val loadTimeoutRunnable = Runnable { handleLoadTimeout() }
 
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
     private val FILECHOOSER_RESULTCODE = 10001
@@ -604,6 +605,7 @@ class MainActivity : AppCompatActivity() {
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                recoveryHandler.removeCallbacks(loadTimeoutRunnable)
                 if (!isErrorState) {
                     // Inject credentials into localStorage if they exist in SharedPreferences
                     val token = sharedPreferences.getString("auth_token", "") ?: ""
@@ -633,6 +635,7 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError?
             ) {
                 super.onReceivedError(view, request, error)
+                recoveryHandler.removeCallbacks(loadTimeoutRunnable)
                 // Filter out non-main-frame asset loading errors
                 if (request?.isForMainFrame == true) {
                     handlePageLoadFailure()
@@ -791,14 +794,13 @@ class MainActivity : AppCompatActivity() {
         var cornerClickCount = 0
         var lastCornerClickTime = 0L
 
-        binding.webView.setOnTouchListener { _, event ->
+        val sharedGestureListener = View.OnTouchListener { view, event ->
             val actionMasked = event.actionMasked
-            
+
             // 1. Detect 3-Finger Tap (Any Down event where pointer count is 3)
             if ((actionMasked == MotionEvent.ACTION_POINTER_DOWN || actionMasked == MotionEvent.ACTION_DOWN) && event.pointerCount == 3) {
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - lastThreeFingerTapTime < 1000L) {
-                    // Debounce: ensure it is a separate touch event (> 150ms) and not a single messy touch frame
                     if (currentTime - lastThreeFingerTapTime > 150L) {
                         threeFingerTapCount++
                         Log.d("MainActivity", "Three-finger tap registered. Count: $threeFingerTapCount")
@@ -808,23 +810,22 @@ class MainActivity : AppCompatActivity() {
                     Log.d("MainActivity", "Three-finger tap registered. Resetted Count to 1")
                 }
                 lastThreeFingerTapTime = currentTime
-                
+
                 if (threeFingerTapCount >= 3) {
                     Log.i("MainActivity", "Three-finger Triple Tap detected! Opening settings.")
                     threeFingerTapCount = 0
                     toggleSettingsOverlay(true)
-                    return@setOnTouchListener true // Intercept!
+                    return@OnTouchListener true // Intercept!
                 }
             }
-            
-            // 2. Fallback: Top-Right Corner 5-Click (100% single-touch compatible)
+
+            // 2. Fallback: Top-Right Corner 5-Click (150x150 hot zone for wall-mounted tablet friendliness)
             if (actionMasked == MotionEvent.ACTION_DOWN) {
                 val x = event.x
                 val y = event.y
                 val screenWidth = resources.displayMetrics.widthPixels
-                
-                // Define top-right corner hot zone: extreme top-right 100x100 pixels
-                if (x >= screenWidth - 100 && y <= 100) {
+
+                if (x >= screenWidth - 150 && y <= 150) {
                     val currentTime = System.currentTimeMillis()
                     if (currentTime - lastCornerClickTime < 1500L) {
                         cornerClickCount++
@@ -834,29 +835,28 @@ class MainActivity : AppCompatActivity() {
                         Log.d("MainActivity", "Corner click registered. Resetted Count to 1")
                     }
                     lastCornerClickTime = currentTime
-                    
+
                     if (cornerClickCount >= 5) {
                         Log.i("MainActivity", "Top-Right Corner 5-Click detected! Opening settings.")
                         cornerClickCount = 0
                         toggleSettingsOverlay(true)
-                        return@setOnTouchListener true // Intercept!
+                        return@OnTouchListener true // Intercept!
                     }
                 }
             }
-            false // Let WebView process standard gestures (scroll, pinch, zoom, etc.)
+
+            // Consume touch events on the loadingOverlay to prevent click leaks,
+            // while returning false for webView to ensure page scrolls/taps are processed.
+            view.id == binding.loadingOverlay.id
         }
-        
-        binding.loadingOverlay.setOnTouchListener { _, event ->
-            // In loading overlay, double tap is still helpful in case configuration is wrong on first launch
-            val doubleTapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDoubleTap(e: MotionEvent): Boolean {
-                    toggleSettingsOverlay(true)
-                    return true
-                }
-            })
-            doubleTapDetector.onTouchEvent(event)
-            true
-        }
+
+        // Configure loading overlay attributes to make it focusable/clickable
+        binding.loadingOverlay.isClickable = true
+        binding.loadingOverlay.isFocusable = true
+
+        // Apply shared gesture listener to both active views
+        binding.webView.setOnTouchListener(sharedGestureListener)
+        binding.loadingOverlay.setOnTouchListener(sharedGestureListener)
     }
 
     /**
@@ -1741,6 +1741,11 @@ class MainActivity : AppCompatActivity() {
                 activeUrl = resolvedUrl
                 binding.subLoadingText.text = if (isLocal) "LAN Server online. Launching local profile..." else "WAN Server online. Launching cloud profile..."
                 Log.i("MainActivity", "Optimal route resolved. Loading URL: $activeUrl")
+                
+                // Set a 10-second connection timeout guard
+                recoveryHandler.removeCallbacks(loadTimeoutRunnable)
+                recoveryHandler.postDelayed(loadTimeoutRunnable, 10000L)
+
                 binding.webView.loadUrl(activeUrl)
             }
         })
@@ -1788,6 +1793,19 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
+    }
+
+    /**
+     * WebView connection loading timeout handler
+     */
+    private fun handleLoadTimeout() {
+        if (!isFinishing && !isDestroyed) {
+            Log.w("MainActivity", "WebView load timeout reached (10s). Stopping connection.")
+            runOnUiThread {
+                binding.webView.stopLoading()
+                handlePageLoadFailure()
+            }
+        }
     }
 
     /**
