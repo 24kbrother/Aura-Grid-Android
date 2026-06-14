@@ -105,15 +105,15 @@ class MainActivity : AppCompatActivity() {
         setupGestureInterceptors()
         setupControlListeners()
 
-        // 6. Connect to back-end services
-        startAuraServices()
-
         // Check if configuration is set; if not (or if it's default), force showing the Setup screen
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
         if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
             Log.i("MainActivity", "App not configured or has default dummy URL. Forcing Setup dialog.")
             toggleSettingsOverlay(true)
         } else {
+            // 6. Connect to back-end services (only when configured)
+            startAuraServices()
+
             // 7. Route & Load Optimal URL
             routeAndLoadUrl()
         }
@@ -1031,8 +1031,8 @@ class MainActivity : AppCompatActivity() {
 
             // If the user chooses to bypass verification or did not enter credentials, save directly
             if (isAnyway || userStr.isEmpty()) {
-                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang, tempSelectedZoom)
                 toggleSettingsOverlay(false)
+                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang, tempSelectedZoom)
                 return@setOnClickListener
             }
 
@@ -1061,13 +1061,13 @@ class MainActivity : AppCompatActivity() {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#00FF66")) // Green for success
                         binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
                         
-                        // Save config with verified token
-                        saveConfig(lanStr, wanStr, userStr, passStr, finalToken, isKiosk, selectedLang, tempSelectedZoom)
-                        
-                        // Close settings after a small delay
+                        // Post delayed action to save config and recreate activity after the user sees the success state
                         binding.txtVerificationStatus.postDelayed({
-                            toggleSettingsOverlay(false)
-                            binding.btnCancelSettings.visibility = View.VISIBLE // Restore cancel visibility
+                            if (!isFinishing && !isDestroyed) {
+                                toggleSettingsOverlay(false)
+                                binding.btnCancelSettings.visibility = View.VISIBLE // Restore cancel visibility
+                                saveConfig(lanStr, wanStr, userStr, passStr, finalToken, isKiosk, selectedLang, tempSelectedZoom)
+                            }
                         }, 500)
                     } else {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#FF3333")) // Red for error
@@ -1175,6 +1175,12 @@ class MainActivity : AppCompatActivity() {
                 putBoolean("is_configured", false)
                 apply()
             }
+            // Stop the WebSocket foreground monitoring service to release resources cleanly
+            try {
+                stopService(Intent(this, AuraSocketService::class.java))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             clearAppCacheAndWebView(this)
             recreate()
         }
@@ -1189,6 +1195,12 @@ class MainActivity : AppCompatActivity() {
                 putBoolean("is_demo_mode", false)
                 putBoolean("is_configured", false)
                 apply()
+            }
+            // Stop the WebSocket foreground monitoring service to release resources cleanly
+            try {
+                stopService(Intent(this, AuraSocketService::class.java))
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
             clearAppCacheAndWebView(this)
             recreate()
@@ -1592,11 +1604,15 @@ class MainActivity : AppCompatActivity() {
      */
     private fun clearAppCacheAndWebView(context: android.content.Context) {
         try {
-            // 1. Clear WebView standard cache
-            val webView = android.webkit.WebView(context)
-            webView.clearCache(true)
+            // 1. Clear WebView standard cache using the existing instance safely
+            if (::binding.isInitialized) {
+                binding.webView.clearCache(true)
+            }
             
-            // 2. Clear Session and Persistent Cookies
+            // 2. Clear DOM storage (localStorage and sessionStorage)
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            
+            // 3. Clear Session and Persistent Cookies
             val cookieManager = android.webkit.CookieManager.getInstance()
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                 cookieManager.removeAllCookies(null)
@@ -1608,15 +1624,14 @@ class MainActivity : AppCompatActivity() {
                 cookieSyncMngr.stopSync()
             }
             
-            // 3. Recursively clear internal files in App Caches Directory
+            // 4. Recursively clear internal files in App Caches Directory
             val cacheDir = context.cacheDir
             if (cacheDir != null && cacheDir.isDirectory) {
                 deleteDirContents(cacheDir)
             }
             
-            // 4. Remove Webview internal persistence databases
-            context.deleteDatabase("webview.db")
-            context.deleteDatabase("webviewCache.db")
+            // Note: Avoid manually deleting "webview.db" and "webviewCache.db" direct database files 
+            // from disk while the WebView is active, as it triggers native Chromium daemon crashes.
             
             val isZh = tempSelectedLang == "zh"
             android.widget.Toast.makeText(
