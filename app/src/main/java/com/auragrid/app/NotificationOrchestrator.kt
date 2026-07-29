@@ -165,6 +165,53 @@ class NotificationOrchestrator(private val context: Context) {
     }
 
     /**
+     * Earthquake Early Warning notification with full-screen intent.
+     * Uses the CRITICAL channel to bypass DND and wake the screen.
+     */
+    fun triggerEarthquakeNotification(
+        eventId: String,
+        epicenter: String,
+        magnitude: Double,
+        localIntensity: Double
+    ) {
+        Log.i("AuraOrchestrator", "🌊 Earthquake notification: $epicenter M$magnitude")
+
+        // Wake screen if off
+        wakeScreen()
+
+        val title = "⚠️ 地震预警"
+        val body = "震中${epicenter} M${magnitude} 级，预估烈度 ${localIntensity} 度，请立即避险！"
+
+        val intent = Intent(context, EarthquakeAlertActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("eventId", eventId)
+            putExtra("epicenter", epicenter)
+            putExtra("magnitude", magnitude)
+            putExtra("localIntensity", localIntensity)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            eventId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_CRITICAL)
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(pendingIntent, true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        notificationManager.notify("eew_$eventId".hashCode(), builder.build())
+    }
+
+    /**
      * Cancels an active system notification.
      */
     fun cancelNotification(id: String) {

@@ -38,7 +38,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|locale|layoutDirection"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="fullSensor"
             android:showWhenLocked="true"
             android:turnScreenOn="true">
             <intent-filter>
@@ -46,6 +46,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Earthquake Early Warning Full-screen Alert -->
+        <activity
+            android:name=".EarthquakeAlertActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|locale|layoutDirection"
+            android:screenOrientation="fullSensor"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
 
         <!-- Foreground Service for LAN WebSocket Connection -->
         <service

@@ -1,6 +1,7 @@
 package com.auragrid.app
 
 import android.util.Log
+import android.content.Intent
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
@@ -29,6 +30,14 @@ class AuraFcmService : FirebaseMessagingService() {
         if (remoteMessage.data.isNotEmpty()) {
             try {
                 val data = remoteMessage.data
+
+                // ── Earthquake Early Warning interception ──
+                val eventType = data["type"] ?: data["event"] ?: ""
+                if (eventType == "earthquake_alert") {
+                    handleEarthquakeAlert(data)
+                    return
+                }
+
                 val id = data["id"] ?: System.currentTimeMillis().toString()
                 val title = data["title"] ?: "Aura Emergency Push"
                 val message = data["message"] ?: "A critical alert has been dispatched."
@@ -61,6 +70,48 @@ class AuraFcmService : FirebaseMessagingService() {
      * Triggered when Firebase issues a new registration Token (e.g. app installed, updated, cleared data).
      * We should upload this token to the backend server to associate this device with alerts.
      */
+    /**
+     * Handles earthquake early warning FCM data payload.
+     * All values are strings (FCM data-only message constraint).
+     */
+    private fun handleEarthquakeAlert(data: Map<String, String>) {
+        Log.i("AuraFcmService", "🌊 Earthquake alert received via FCM!")
+
+        val eventId     = data["eventId"]     ?: ""
+        val latitude    = data["latitude"]?.toDoubleOrNull()    ?: 0.0
+        val longitude   = data["longitude"]?.toDoubleOrNull()   ?: 0.0
+        val originTime  = data["originTime"]?.toLongOrNull()    ?: 0L  // unix ms
+        val magnitude   = data["magnitude"]?.toDoubleOrNull()   ?: 0.0
+        val depth       = data["depth"]?.toDoubleOrNull()       ?: 0.0
+        val epicenter   = data["epicenter"] ?: "未知震中"
+        val distance    = data["distance"]?.toDoubleOrNull()    ?: 0.0
+        val countdown   = data["countdown"]?.toDoubleOrNull()   ?: 0.0
+        val localIntensity = data["localIntensity"]?.toDoubleOrNull() ?: 0.0
+
+        Log.i("AuraFcmService", "EEW: $epicenter M$magnitude eventId=$eventId distance=$distance km")
+
+        // Launch fullscreen EarthquakeAlertActivity
+        val intent = Intent(this, EarthquakeAlertActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("eventId", eventId)
+            putExtra("latitude", latitude)
+            putExtra("longitude", longitude)
+            putExtra("originTime", originTime)
+            putExtra("magnitude", magnitude)
+            putExtra("depth", depth)
+            putExtra("epicenter", epicenter)
+            putExtra("distance", distance)
+            putExtra("countdown", countdown)
+            putExtra("localIntensity", localIntensity)
+        }
+        startActivity(intent)
+
+        // Also fire critical notification with full-screen intent as fallback
+        orchestrator.triggerEarthquakeNotification(
+            eventId, epicenter, magnitude, localIntensity
+        )
+    }
+
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.i("AuraFcmService", "Generated new FCM Registration Token: $token")

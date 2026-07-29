@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Aura Grid</string>
-    <string name="app_version">v2.2.3</string>
+    <string name="app_version">v2.1.0-OTA</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">Aura Grid Companion Settings</string>
@@ -17,7 +17,7 @@
     <string name="device_mode">Device Work Mode</string>
     <string name="mode_kiosk">Wall Kiosk (Keep Screen On)</string>
     <string name="mode_companion">Companion (Mobile)</string>
-    <string name="system_language">System Language / 系统语言</string>
+    <string name="system_language">System Language</string>
     <string name="lang_zh">中文 (简体)</string>
     <string name="lang_en">English</string>
     <string name="cancel">Cancel</string>

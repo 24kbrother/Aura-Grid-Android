@@ -14,4 +14,22 @@
     <color name="text_primary">#F5F6F8</color>
     <color name="text_secondary">#8E8E93</color>
     <color name="glass_card">#221A1A24</color>
+
+    <!-- Theme: Obsidian Dark -->
+    <color name="obsidian_bg">#0D0D14</color>
+    <color name="obsidian_panel">#1A1A24</color>
+    <color name="obsidian_accent">#00E5FF</color>
+    <color name="obsidian_text">#FFFFFF</color>
+
+    <!-- Theme: Cyber Neon -->
+    <color name="neon_bg">#120A1E</color>
+    <color name="neon_panel">#1C112E</color>
+    <color name="neon_accent">#AB4FFF</color>
+    <color name="neon_text">#FFFFFF</color>
+
+    <!-- Theme: Frost White -->
+    <color name="frost_bg">#F5F7FA</color>
+    <color name="frost_panel">#FFFFFF</color>
+    <color name="frost_accent">#4F45E6</color>
+    <color name="frost_text">#000000</color>
 </resources>
