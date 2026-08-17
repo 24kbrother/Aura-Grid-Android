@@ -7,6 +7,7 @@
     <string name="settings_desc">Node Configuration</string>
     <string name="btn_add_node">ADD NEW SECURE NODE</string>
     <string name="btn_verify_add">VERIFY &amp; ADD</string>
+    <string name="btn_save_changes">VERIFY &amp; SAVE</string>
     <string name="advanced_settings">Advanced Settings</string>
     <string name="confirm_wipe_warning">TAP AGAIN TO CONFIRM WIPE!</string>
     <string name="back_to_list">◀ BACK</string>

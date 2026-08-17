@@ -1115,7 +1115,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnCancelSettings.setOnClickListener {
-            toggleSettingsOverlay(false)
+            if (binding.layoutAddInstanceForm.visibility == View.VISIBLE) {
+                editingInstanceId = null
+                showPanel(isAddPanel = false)
+            } else {
+                toggleSettingsOverlay(false)
+            }
         }
 
         // Advanced expandable settings panel trigger listener
@@ -1141,17 +1146,12 @@ class MainActivity : AppCompatActivity() {
         // Add Instance transitions
         binding.btnAddInstance.setOnClickListener {
             editingInstanceId = null
-            binding.inputInstanceName.setText("")
-            binding.inputLanUrl.setText("")
-            binding.inputWanUrl.setText("")
-            binding.inputUsername.setText("admin")
-            binding.inputPassword.setText("")
-            showPanel(true)
+            showPanel(isAddPanel = true, isEditing = false)
         }
 
         binding.btnBackToList.setOnClickListener {
             editingInstanceId = null
-            showPanel(false)
+            showPanel(isAddPanel = false)
         }
 
         // Form save button (VERIFY & ADD / SAVE)
@@ -1184,6 +1184,9 @@ class MainActivity : AppCompatActivity() {
             // If the user chooses to bypass verification or did not enter credentials, save directly
             if (isAnyway || userStr.isEmpty()) {
                 val targetId = editingInstanceId ?: java.util.UUID.randomUUID().toString()
+                val isCurrentActive = (targetId == getActiveInstanceId())
+                val isNewNode = (editingInstanceId == null)
+
                 val inst = AuraGridInstance(targetId, nameStr, lanStr, wanStr, userStr)
                 val list = getInstances().toMutableList()
                 val existingIdx = list.indexOfFirst { it.id == targetId }
@@ -1200,12 +1203,18 @@ class MainActivity : AppCompatActivity() {
                     putBoolean("is_configured", true)
                     apply()
                 }
-                setActiveInstanceId(targetId)
                 editingInstanceId = null
                 
-                toggleSettingsOverlay(false)
-                clearAppCacheAndWebView(this@MainActivity)
-                recreate()
+                if (isCurrentActive || isNewNode) {
+                    setActiveInstanceId(targetId)
+                    toggleSettingsOverlay(false)
+                    clearAppCacheAndWebView(this@MainActivity)
+                    recreate()
+                } else {
+                    showPanel(isAddPanel = false)
+                    val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+                    android.widget.Toast.makeText(this@MainActivity, if (isZh) "节点配置已更新" else "Node settings updated", android.widget.Toast.LENGTH_SHORT).show()
+                }
                 return@setOnClickListener
             }
 
@@ -1235,6 +1244,9 @@ class MainActivity : AppCompatActivity() {
                         binding.txtVerificationStatus.postDelayed({
                             if (!isFinishing && !isDestroyed) {
                                 val targetId = editingInstanceId ?: java.util.UUID.randomUUID().toString()
+                                val isCurrentActive = (targetId == getActiveInstanceId())
+                                val isNewNode = (editingInstanceId == null)
+
                                 val inst = AuraGridInstance(targetId, nameStr, lanStr, wanStr, userStr)
                                 val list = getInstances().toMutableList()
                                 val existingIdx = list.indexOfFirst { it.id == targetId }
@@ -1251,12 +1263,18 @@ class MainActivity : AppCompatActivity() {
                                     putBoolean("is_configured", true)
                                     apply()
                                 }
-                                setActiveInstanceId(targetId)
                                 editingInstanceId = null
                                 
-                                toggleSettingsOverlay(false)
-                                clearAppCacheAndWebView(this@MainActivity)
-                                recreate()
+                                if (isCurrentActive || isNewNode) {
+                                    setActiveInstanceId(targetId)
+                                    toggleSettingsOverlay(false)
+                                    clearAppCacheAndWebView(this@MainActivity)
+                                    recreate()
+                                } else {
+                                    showPanel(isAddPanel = false)
+                                    val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+                                    android.widget.Toast.makeText(this@MainActivity, if (isZh) "节点配置已更新" else "Node settings updated", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }, 500)
                     } else {
@@ -2470,17 +2488,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * Clear stored auth token for active instance when frontend encounters 401,
-         * and perform background auto-login using saved password to refresh token seamlessly.
+         * Request background silent re-authentication from native when frontend encounters 401.
+         * Resolves via window.__auraCallbacks without triggering disruptive full page reloads.
          */
         @JavascriptInterface
-        fun clearStoredToken() {
-            Log.i("AuraJSBridge", "Received clearStoredToken. Attempting background token auto-refresh...")
-            val activeId = getActiveInstanceId()
-            if (activeId.isNotEmpty()) {
-                sharedPreferences.edit().remove("auth_token_$activeId").apply()
-            }
-
+        fun requestSilentReAuth(callbackId: String) {
+            Log.i("AuraJSBridge", "Received requestSilentReAuth. Attempting background token auto-refresh... (cbId: $callbackId)")
             executor.execute {
                 val refreshed = refreshActiveTokenSync()
                 if (refreshed) {
@@ -2494,10 +2507,15 @@ class MainActivity : AppCompatActivity() {
                             try {
                                 localStorage.setItem('auth_token', '$newToken');
                                 localStorage.setItem('auth_user', '$userObj');
-                                console.log('[AuraGrid-Android] Token auto-refreshed successfully. Reloading...');
-                                window.location.reload();
+                                console.log('[AuraGrid-Android] Background silent re-auth succeeded and injected.');
+                                if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                                    window.__auraCallbacks['$callbackId']({ success: true, token: '$newToken' });
+                                }
                             } catch(e) {
                                 console.error('[AuraGrid-Android] Token auto-refresh injection failed:', e);
+                                if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                                    window.__auraCallbacks['$callbackId']({ success: false, reason: e.toString() });
+                                }
                             }
                         })();
                     """.trimIndent()
@@ -2507,7 +2525,29 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else {
                     Log.w("AuraJSBridge", "Background auto-login failed or credentials unavailable.")
+                    val jsScript = """
+                        (function() {
+                            if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                                window.__auraCallbacks['$callbackId']({ success: false, reason: 'auto_login_failed' });
+                            }
+                        })();
+                    """.trimIndent()
+                    runOnUiThread {
+                        binding.webView.evaluateJavascript(jsScript, null)
+                    }
                 }
+            }
+        }
+
+        /**
+         * Clear stored auth token for active instance.
+         */
+        @JavascriptInterface
+        fun clearStoredToken() {
+            Log.i("AuraJSBridge", "Received clearStoredToken.")
+            val activeId = getActiveInstanceId()
+            if (activeId.isNotEmpty()) {
+                sharedPreferences.edit().remove("auth_token_$activeId").apply()
             }
         }
 
@@ -2700,7 +2740,7 @@ class MainActivity : AppCompatActivity() {
                 binding.inputUsername.setText(inst.username)
                 val savedPass = sharedPreferences.getString("auth_pass_${inst.id}", "") ?: ""
                 binding.inputPassword.setText(savedPass)
-                showPanel(true)
+                showPanel(isAddPanel = true, isEditing = true)
             }
 
             btnDeleteInstance.setOnClickListener {
@@ -2767,22 +2807,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPanel(isAddPanel: Boolean) {
+    private fun showPanel(isAddPanel: Boolean, isEditing: Boolean = false) {
         val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
         if (isAddPanel) {
             binding.layoutInstancesList.visibility = View.GONE
             binding.layoutAddInstanceForm.visibility = View.VISIBLE
             
-            // Clear inputs for clean form entry
-            binding.inputInstanceName.setText("")
-            binding.inputLanUrl.setText("")
-            binding.inputWanUrl.setText("")
-            binding.inputUsername.setText("")
-            binding.inputPassword.setText("")
+            if (!isEditing) {
+                // Clear inputs for clean form entry in Add Mode
+                binding.inputInstanceName.setText("")
+                binding.inputLanUrl.setText("")
+                binding.inputWanUrl.setText("")
+                binding.inputUsername.setText("admin")
+                binding.inputPassword.setText("")
+                binding.btnSaveSettings.text = res.getString(R.string.btn_verify_add)
+            } else {
+                // In Edit Mode, keep populated inputs and show Save Changes
+                binding.btnSaveSettings.text = res.getString(R.string.btn_save_changes)
+            }
             
             // Show verification status clean
             binding.txtVerificationStatus.visibility = View.GONE
-            binding.btnSaveSettings.text = res.getString(R.string.btn_verify_add)
             binding.btnSaveSettings.visibility = View.VISIBLE
             binding.btnCancelSettings.text = res.getString(R.string.cancel)
         } else {

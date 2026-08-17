@@ -7,6 +7,7 @@
     <string name="settings_desc">节点配置</string>
     <string name="btn_add_node">添加新的 AURA Grid 安全节点</string>
     <string name="btn_verify_add">验证并添加</string>
+    <string name="btn_save_changes">验证并保存修改</string>
     <string name="advanced_settings">高级设置</string>
     <string name="confirm_wipe_warning">再次点击以确认擦除！</string>
     <string name="back_to_list">◀ 返回</string>
