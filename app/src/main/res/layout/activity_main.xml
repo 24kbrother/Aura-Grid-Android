@@ -262,12 +262,73 @@
                             android:inputType="text" />
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <!-- Auto Discover Hub Header & Action -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/server_lan_url"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnAutoDiscoverLan"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:text="@string/auto_discover_hub"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            app:strokeColor="@color/neon_teal"
+                            app:strokeWidth="1dp"
+                            app:cornerRadius="18dp"
+                            app:icon="@android:drawable/ic_menu_search"
+                            app:iconTint="@color/neon_teal"
+                            app:iconSize="14dp" />
+                    </LinearLayout>
+
+                    <!-- Dynamic Discovered Hosts Container -->
+                    <LinearLayout
+                        android:id="@+id/layoutDiscoveredHosts"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/txtDiscoveryStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/scanning_lan"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:layout_marginBottom="6dp" />
+
+                        <LinearLayout
+                            android:id="@+id/containerDiscoveredCards"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical" />
+                    </LinearLayout>
+
                     <!-- LAN Address Input -->
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/layoutLanUrl"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="8dp"
                         android:hint="@string/server_lan_url"
                         android:textColorHint="@color/text_secondary"
                         app:hintTextColor="@color/neon_teal"

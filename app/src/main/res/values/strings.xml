@@ -46,4 +46,11 @@
     <string name="update_check_failed">Failed to check updates.</string>
 
     <string name="web_zoom">Web Zoom Scale</string>
+
+    <!-- Subnet Auto-Discovery -->
+    <string name="auto_discover_hub">Auto Discover Hub</string>
+    <string name="scanning_lan">Scanning local network for hubs…</string>
+    <string name="no_hub_found">No hubs found. Please check WiFi connection.</string>
+    <string name="hub_discovered">Discovered Aura Grid Hub</string>
+    <string name="discovered_hubs_hint">Discovered Hubs (Tap to Fill):</string>
 </resources>

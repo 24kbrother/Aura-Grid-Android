@@ -46,4 +46,11 @@
     <string name="update_check_failed">檢查更新失敗。</string>
 
     <string name="web_zoom">網頁縮放比例</string>
+
+    <!-- Subnet Auto-Discovery -->
+    <string name="auto_discover_hub">自動發現中樞</string>
+    <string name="scanning_lan">正在掃描局域網中樞…</string>
+    <string name="no_hub_found">未在當前 WiFi 發現可用中樞，請檢查連線。</string>
+    <string name="hub_discovered">已發現局域網中樞</string>
+    <string name="discovered_hubs_hint">已發現局域網中樞（點擊回填）：</string>
 </resources>

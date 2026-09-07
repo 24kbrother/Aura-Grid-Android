@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var roamingManager: NetworkRoamingManager
     private lateinit var orchestrator: NotificationOrchestrator
+    private lateinit var subnetScanner: SubnetScanner
     private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private var lanUrl = ""
@@ -108,6 +109,7 @@ class MainActivity : AppCompatActivity() {
 
         roamingManager = NetworkRoamingManager(this)
         orchestrator = NotificationOrchestrator(this)
+        subnetScanner = SubnetScanner(this)
 
         // 2. Configure hardware screen locking based on mode
         updateScreenLocking()
@@ -980,6 +982,7 @@ class MainActivity : AppCompatActivity() {
         binding.layoutWanUrl.hint = res.getString(R.string.server_wan_url)
         binding.layoutUsername.hint = res.getString(R.string.username)
         binding.layoutPassword.hint = res.getString(R.string.password)
+        binding.btnAutoDiscoverLan.text = if (::subnetScanner.isInitialized && subnetScanner.isScanning()) res.getString(R.string.cancel) else res.getString(R.string.auto_discover_hub)
         
         binding.txtDeviceModeLabel.text = res.getString(R.string.device_mode)
         binding.radioKiosk.text = res.getString(R.string.mode_kiosk)
@@ -1152,6 +1155,11 @@ class MainActivity : AppCompatActivity() {
         binding.btnBackToList.setOnClickListener {
             editingInstanceId = null
             showPanel(isAddPanel = false)
+        }
+
+        // Subnet auto-discovery trigger
+        binding.btnAutoDiscoverLan.setOnClickListener {
+            triggerSubnetScan()
         }
 
         // Form save button (VERIFY & ADD / SAVE)
@@ -2369,6 +2377,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         recoveryHandler.removeCallbacks(recoveryRunnable)
+        if (::subnetScanner.isInitialized) {
+            subnetScanner.stopScan()
+        }
     }
 
     /**
@@ -2821,9 +2832,16 @@ class MainActivity : AppCompatActivity() {
                 binding.inputUsername.setText("admin")
                 binding.inputPassword.setText("")
                 binding.btnSaveSettings.text = res.getString(R.string.btn_verify_add)
+
+                // Clear previous discovery results and automatically start background scan
+                binding.layoutDiscoveredHosts.visibility = View.GONE
+                binding.containerDiscoveredCards.removeAllViews()
+                triggerSubnetScan()
             } else {
                 // In Edit Mode, keep populated inputs and show Save Changes
                 binding.btnSaveSettings.text = res.getString(R.string.btn_save_changes)
+                binding.layoutDiscoveredHosts.visibility = View.GONE
+                binding.containerDiscoveredCards.removeAllViews()
             }
             
             // Show verification status clean
@@ -2831,6 +2849,13 @@ class MainActivity : AppCompatActivity() {
             binding.btnSaveSettings.visibility = View.VISIBLE
             binding.btnCancelSettings.text = res.getString(R.string.cancel)
         } else {
+            if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
+                subnetScanner.stopScan()
+            }
+            binding.layoutDiscoveredHosts.visibility = View.GONE
+            binding.containerDiscoveredCards.removeAllViews()
+            binding.btnAutoDiscoverLan.text = res.getString(R.string.auto_discover_hub)
+
             binding.layoutInstancesList.visibility = View.VISIBLE
             binding.layoutAddInstanceForm.visibility = View.GONE
             
@@ -2848,9 +2873,74 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Triggers concurrent LAN subnet scan and updates UI cards in real time.
+     */
+    private fun triggerSubnetScan() {
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
+            subnetScanner.stopScan()
+            binding.layoutDiscoveredHosts.visibility = View.GONE
+            binding.btnAutoDiscoverLan.text = res.getString(R.string.auto_discover_hub)
+            return
+        }
+
+        binding.layoutDiscoveredHosts.visibility = View.VISIBLE
+        binding.containerDiscoveredCards.removeAllViews()
+        binding.txtDiscoveryStatus.text = res.getString(R.string.scanning_lan)
+        binding.btnAutoDiscoverLan.text = res.getString(R.string.cancel)
+
+        subnetScanner.startScan(object : SubnetScanner.ScanCallback {
+            override fun onHostDiscovered(host: DiscoveredHost) {
+                runOnUiThread {
+                    addDiscoveredHostCard(host)
+                }
+            }
+
+            override fun onScanProgress(current: Int, total: Int) {
+                runOnUiThread {
+                    val percent = (current * 100) / total
+                    binding.txtDiscoveryStatus.text = "${res.getString(R.string.scanning_lan)} ($percent%)"
+                }
+            }
+
+            override fun onScanCompleted(candidates: List<DiscoveredHost>) {
+                runOnUiThread {
+                    binding.btnAutoDiscoverLan.text = res.getString(R.string.auto_discover_hub)
+                    if (candidates.isEmpty()) {
+                        binding.txtDiscoveryStatus.text = res.getString(R.string.no_hub_found)
+                    } else {
+                        binding.txtDiscoveryStatus.text = "${res.getString(R.string.discovered_hubs_hint)} (${candidates.size})"
+                    }
+                }
+            }
+        })
+    }
+
+    /**
+     * Inflates and binds a discovered host result card for one-tap auto-filling.
+     */
+    private fun addDiscoveredHostCard(host: DiscoveredHost) {
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        val cardView = layoutInflater.inflate(R.layout.item_discovered_host, binding.containerDiscoveredCards, false)
+        cardView.findViewById<TextView>(R.id.txtHostTitle).text = res.getString(R.string.hub_discovered)
+        cardView.findViewById<TextView>(R.id.txtHostAddress).text = host.displayAddress
+        cardView.findViewById<TextView>(R.id.txtHostLatency).text = "${host.latencyMs}ms"
+
+        cardView.setOnClickListener {
+            binding.inputLanUrl.setText(host.url)
+            if (binding.inputInstanceName.text.isNullOrEmpty()) {
+                val defaultName = if (tempSelectedLang.startsWith("zh")) "Aura Grid 智能中枢" else "Aura Grid Home"
+                binding.inputInstanceName.setText(defaultName)
+            }
+            Toast.makeText(this@MainActivity, "${res.getString(R.string.hub_discovered)}: ${host.displayAddress}", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.containerDiscoveredCards.addView(cardView)
+    }
+
     private fun resetWipeButtonState() {
         isConfirmingWipe = false
-        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
         binding.btnWipeData.text = when (tempSelectedLang) {
             "zh-rTW", "zh-TW" -> "擦除數據並退出"
             "zh" -> "擦除数据并退出"
