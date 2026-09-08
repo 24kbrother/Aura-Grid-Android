@@ -2,6 +2,19 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-09-09 协作记录 (节点添加与切换直达 Dashboard 及 /login 滞留自愈)
+
+### 1. WebView Token 注入与 `/login` 登录页滞留病灶歼灭 (`MainActivity.kt`)
+- **根因分析**：
+  - 过去在 `onPageFinished` 中检测到 `localStorage.getItem('auth_token') !== '$token'` 时调用 `window.location.reload()`；
+  - 若页面先前因无会话进入了 `/login`，简单的页面重载（reload）依然重新打开 `/login`，而不会触发 SPA 守卫跳出；
+- **自愈重定向落地**：
+  - 在 `localStorage` 写入 `auth_token` 与 `auth_user` 后，显式判断 `window.location.pathname` 与 `hash`；
+  - 若处于 `/login`，立即执行 `window.location.replace('/')` 无缝直达 Dashboard；若在其他业务页面且 Token 发生变更才执行 `reload()`；
+- **双端体验对齐**：彻底消除 Android 节点管理后进入登录页的二次繁琐输入困扰。
+
+---
+
 ## 📅 2026-09-07 协作记录 (局域网中枢轻量并发自动探针与一键配网)
 
 ### 1. 局域网轻量探针引擎全链路落地 (`SubnetScanner.kt`)

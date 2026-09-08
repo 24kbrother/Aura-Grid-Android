@@ -702,10 +702,21 @@ class MainActivity : AppCompatActivity() {
                         Log.d("MainActivity", "Injecting authentication token into WebView localStorage.")
                         val js = """
                             (function() {
-                                if (localStorage.getItem('auth_token') !== '$token') {
-                                    localStorage.setItem('auth_token', '$token');
-                                    localStorage.setItem('auth_user', '$username');
-                                    window.location.reload();
+                                try {
+                                    var updated = false;
+                                    if (localStorage.getItem('auth_token') !== '$token') {
+                                        localStorage.setItem('auth_token', '$token');
+                                        localStorage.setItem('auth_user', '$username');
+                                        updated = true;
+                                    }
+                                    // If currently on /login, immediately navigate to /
+                                    if (window.location.pathname.indexOf('/login') !== -1 || window.location.hash.indexOf('/login') !== -1) {
+                                        window.location.replace('/');
+                                    } else if (updated) {
+                                        window.location.reload();
+                                    }
+                                } catch (e) {
+                                    console.error('[AuraGrid-Android] Token injection failed:', e);
                                 }
                             })();
                         """.trimIndent()
