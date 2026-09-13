@@ -53,36 +53,4 @@
     <string name="no_hub_found">未在当前 WiFi 发现可用中枢，请检查连接。</string>
     <string name="hub_discovered">已发现局域网中枢</string>
     <string name="discovered_hubs_hint">已发现局域网中枢（点击回填）：</string>
-
-    <!-- Onboarding Experience -->
-    <string name="ob_welcome_title">AURA GRID</string>
-    <string name="ob_welcome_subtitle">新一代家庭全屋数字孪生中枢\n极致沉浸 · 离线可用 · 毫秒响应</string>
-    <string name="ob_feature1_title">数字孪生中枢</string>
-    <string name="ob_feature1_desc">3D 全息户型光影渲染\n全屋设备状态直观映射，点触之间掌控空间</string>
-    <string name="ob_feature2_title">本地网络与隐私盾</string>
-    <string name="ob_feature2_desc">零数据上云 · 100% 本地化运行\n家庭物联网隐私与设备数据严格留存在本地网络</string>
-    <string name="ob_feature3_title">双轨漫游与安全防护</string>
-    <string name="ob_feature3_desc">回家局域网零时延 · 离家蜂窝无感漫游\n结合生物识别与硬件级指纹，打造金融级中枢防线</string>
-    <string name="ob_connect_title">连接空间中枢</string>
-    <string name="ob_connect_scanning">正在探测局域网内的 Aura Grid 服务器…</string>
-    <string name="ob_connect_discovered">已发现可用空间中枢（点击直连）：</string>
-    <string name="ob_connect_manual">手动输入中枢 IP 与凭据</string>
-    <string name="ob_next">下一步</string>
-    <string name="ob_start">开始连接</string>
-    <string name="ob_demo_title">✨ 探索官方演示系统</string>
-    <string name="ob_demo_desc">无需自建服务器，1 秒换取凭证直达真实全功能演示大屏</string>
-    <string name="ob_demo_tag">SANDBOX</string>
-    <string name="ob_demo_hint">即刻进入体验 →</string>
-    <string name="demo_banner_title">✨ 官方演示沙盒模式</string>
-    <string name="demo_banner_desc">当前运行于公共演示沙盒系统。若要接入并配置您自己的中枢，请退出演示模式。</string>
-    <string name="demo_banner_exit">退出演示模式并配置家庭系统</string>
-
-    <!-- Biometric Security & Vault -->
-    <string name="biometric_lock_title">生物识别安全锁</string>
-    <string name="biometric_lock_desc">在随身伴侣模式下，唤醒或重新进入 App 时需验证面容或指纹</string>
-    <string name="biometric_prompt_title">解锁 Aura Grid</string>
-    <string name="biometric_prompt_subtitle">请验证生物指纹或面容以进入家庭数字孪生中枢</string>
-    <string name="biometric_not_available">当前设备未录入或不支持生物识别硬件</string>
-    <string name="biometric_failed">身份验证未通过，请轻点重试</string>
-    <string name="biometric_use_password">使用设备锁屏密码</string>
 </resources>

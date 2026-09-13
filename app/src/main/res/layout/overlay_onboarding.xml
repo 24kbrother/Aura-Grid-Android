@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/onboardingOverlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_obsidian"
+    android:visibility="gone"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- Top Header: Progress Capsules & Language Switcher -->
+    <LinearLayout
+        android:id="@+id/onboardingTopBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="36dp"
+        android:paddingBottom="12dp"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- 4 Step Progress Indicators -->
+        <LinearLayout
+            android:id="@+id/onboardingIndicators"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <View
+                android:id="@+id/indicatorDot0"
+                android:layout_width="20dp"
+                android:layout_height="6dp"
+                android:background="@drawable/bg_onboarding_capsule_active" />
+
+            <View
+                android:id="@+id/indicatorDot1"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_onboarding_capsule_inactive" />
+
+            <View
+                android:id="@+id/indicatorDot2"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_onboarding_capsule_inactive" />
+
+            <View
+                android:id="@+id/indicatorDot3"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_onboarding_capsule_inactive" />
+        </LinearLayout>
+
+        <!-- Compact Language Switcher Segmented Toggle -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#15FFFFFF"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/btnOnboardingLangZh"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="简"
+                android:textColor="@color/black"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:background="@color/neon_teal"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="3dp"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/btnOnboardingLangZhTw"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="繁"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:background="@android:color/transparent"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="3dp"
+                android:clickable="true"
+                android:focusable="true"/>
+
+            <TextView
+                android:id="@+id/btnOnboardingLangEn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EN"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:background="@android:color/transparent"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="3dp"
+                android:clickable="true"
+                android:focusable="true"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Center ViewPager2 for 4 slides -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/onboardingViewPager"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/onboardingTopBar"
+        app:layout_constraintBottom_toTopOf="@id/onboardingBottomBar" />
+
+    <!-- Bottom Navigation Bar -->
+    <LinearLayout
+        android:id="@+id/onboardingBottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingBottom="36dp"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOnboardingNext"
+            style="@style/Widget.MaterialComponents.Button"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="下一步"
+            android:textColor="@color/black"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:backgroundTint="@color/neon_teal"
+            app:cornerRadius="25dp" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -60,16 +60,6 @@
         </LinearLayout>
     </RelativeLayout>
 
-    <!-- Full-screen 4-Step Onboarding & Space Hub Discovery Overlay (shown when unconfigured) -->
-    <include
-        android:id="@+id/onboardingOverlayLayout"
-        layout="@layout/overlay_onboarding" />
-
-    <!-- Biometric Security Lock Screen Overlay (Companion Mode) -->
-    <include
-        android:id="@+id/biometricLockOverlayLayout"
-        layout="@layout/overlay_biometric_lock" />
-
     <!-- Custom High-End Kiosk Server Configuration Modal (Hidden by Default) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/settingsOverlay"
@@ -189,70 +179,6 @@
                     android:layout_marginTop="16dp"
                     android:layout_marginBottom="16dp"
                     android:background="#1AFFFFFF" />
-
-                <!-- 0. Demo Mode Exit Banner (Visible only in Demo Mode) -->
-                <LinearLayout
-                    android:id="@+id/layoutDemoBanner"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    android:background="@drawable/bg_demo_card"
-                    android:padding="16dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/demo_banner_title"
-                            android:textColor="@color/text_primary"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/ob_demo_tag"
-                            android:textColor="#C084FC"
-                            android:textSize="10sp"
-                            android:textStyle="bold"
-                            android:background="@drawable/bg_demo_badge"
-                            android:paddingHorizontal="6dp"
-                            android:paddingVertical="2dp" />
-                    </LinearLayout>
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="@string/demo_banner_desc"
-                        android:textColor="#C4B5FD"
-                        android:textSize="11sp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnExitDemoBanner"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="38dp"
-                        android:layout_marginTop="10dp"
-                        android:text="@string/demo_banner_exit"
-                        android:textColor="#FF6B6B"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        app:strokeColor="#FF6B6B"
-                        app:strokeWidth="1dp"
-                        app:cornerRadius="6dp"
-                        app:icon="@android:drawable/ic_menu_close_clear_cancel"
-                        app:iconTint="#FF6B6B"
-                        app:iconSize="14dp" />
-                </LinearLayout>
 
                 <!-- 1. Instances List Container (Visible by Default) -->
                 <LinearLayout
@@ -579,49 +505,6 @@
                                 android:buttonTint="@color/neon_teal"
                                 android:textSize="13sp" />
                         </RadioGroup>
-
-                        <!-- Biometric Security Toggle (Companion Mode) -->
-                        <LinearLayout
-                            android:id="@+id/layoutBiometricLock"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="10dp"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:orientation="vertical">
-
-                                <TextView
-                                    android:id="@+id/txtBiometricTitle"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/biometric_lock_title"
-                                    android:textColor="@color/text_primary"
-                                    android:textSize="13sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:id="@+id/txtBiometricDesc"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:text="@string/biometric_lock_desc"
-                                    android:textColor="@color/text_secondary"
-                                    android:textSize="11sp" />
-                            </LinearLayout>
-
-                            <com.google.android.material.switchmaterial.SwitchMaterial
-                                android:id="@+id/switchBiometricLock"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                app:useMaterialThemeColors="false"
-                                app:thumbTint="@color/neon_teal"
-                                app:trackTint="#3300FFCC" />
-                        </LinearLayout>
 
                         <View
                             android:layout_width="match_parent"

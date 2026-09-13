@@ -49,40 +49,8 @@
 
     <!-- Subnet Auto-Discovery -->
     <string name="auto_discover_hub">自動發現中樞</string>
-    <string name="scanning_lan">正在掃描區域網絡中樞…</string>
+    <string name="scanning_lan">正在掃描局域網中樞…</string>
     <string name="no_hub_found">未在當前 WiFi 發現可用中樞，請檢查連線。</string>
-    <string name="hub_discovered">已發現區域網絡中樞</string>
-    <string name="discovered_hubs_hint">已發現區域網絡中樞（點擊回填）：</string>
-
-    <!-- Onboarding Experience -->
-    <string name="ob_welcome_title">AURA GRID</string>
-    <string name="ob_welcome_subtitle">新一代家庭全屋數字孿生中樞\n極致沉浸 · 離線可用 · 毫秒響應</string>
-    <string name="ob_feature1_title">數字孿生中樞</string>
-    <string name="ob_feature1_desc">3D 全息戶型光影渲染\n全屋設備狀態直觀映射，點觸之間掌控空間</string>
-    <string name="ob_feature2_title">本地網絡與隱私盾</string>
-    <string name="ob_feature2_desc">零數據上雲 · 100% 本地化運行\n家庭物聯網隱私與設備數據嚴格留存在本地網絡</string>
-    <string name="ob_feature3_title">雙軌漫遊與安全防護</string>
-    <string name="ob_feature3_desc">回家區域網絡零延遲 · 離家行動網絡無感漫遊\n結合生物識別與硬件級指紋，打造金融級中樞防線</string>
-    <string name="ob_connect_title">連接空間中樞</string>
-    <string name="ob_connect_scanning">正在探測區域網絡內的 Aura Grid 伺服器…</string>
-    <string name="ob_connect_discovered">已發現可用空間中樞（點擊直連）：</string>
-    <string name="ob_connect_manual">手動輸入中樞 IP 與憑據</string>
-    <string name="ob_next">下一步</string>
-    <string name="ob_start">開始連線</string>
-    <string name="ob_demo_title">✨ 探索官方演示系統</string>
-    <string name="ob_demo_desc">無需自建伺服器，1 秒換取憑證直達真實全功能演示大螢幕</string>
-    <string name="ob_demo_tag">SANDBOX</string>
-    <string name="ob_demo_hint">即刻進入體驗 →</string>
-    <string name="demo_banner_title">✨ 官方演示沙盒模式</string>
-    <string name="demo_banner_desc">當前運行於公共演示沙盒系統。若要接入並配置您自己的中樞，請退出演示模式。</string>
-    <string name="demo_banner_exit">退出演示模式並配置家庭系統</string>
-
-    <!-- Biometric Security & Vault -->
-    <string name="biometric_lock_title">生物辨識安全鎖</string>
-    <string name="biometric_lock_desc">在隨身伴侶模式下，喚醒或重新進入 App 時需驗證面容或指紋</string>
-    <string name="biometric_prompt_title">解鎖 Aura Grid</string>
-    <string name="biometric_prompt_subtitle">請驗證生物指紋或面容以進入家庭數位孿生中樞</string>
-    <string name="biometric_not_available">當前裝置未錄入或不支援生物辨識硬體</string>
-    <string name="biometric_failed">身分驗證未通過，請輕點重試</string>
-    <string name="biometric_use_password">使用裝置鎖定密碼</string>
+    <string name="hub_discovered">已發現局域網中樞</string>
+    <string name="discovered_hubs_hint">已發現局域網中樞（點擊回填）：</string>
 </resources>

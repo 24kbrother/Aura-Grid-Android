@@ -58,9 +58,6 @@ dependencies {
     // Google FCM
     implementation("com.google.firebase:firebase-messaging-ktx:23.4.1")
 
-    // Biometric Authentication (Face/Fingerprint/Credential)
-    implementation("androidx.biometric:biometric:1.1.0")
-
     // Huawei HMS Push fallbacks
     implementation("com.huawei.hms:push:6.12.0.300")
 

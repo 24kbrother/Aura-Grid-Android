@@ -26,17 +26,12 @@ import android.webkit.WebViewClient
 import android.widget.RadioButton
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.ProgressBar
-import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.auragrid.app.databinding.ActivityMainBinding
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
 import java.security.MessageDigest
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
@@ -60,8 +55,6 @@ class MainActivity : AppCompatActivity() {
     private var lanUrl = ""
     private var wanUrl = ""
     private var isKioskMode = true
-    private var isBiometricEnabled = false
-    private var isBiometricUnlocked = false
     private var activeUrl = ""
     private var tempSelectedLang = "zh"
     private var tempSelectedZoom = 100
@@ -114,23 +107,7 @@ class MainActivity : AppCompatActivity() {
         // Load other configuration values
         loadSavedConfig()
 
-        roamingManager = NetworkRoamingManager(this).apply {
-            onWanUrlDiscovered = { extUrl ->
-                val activeId = getActiveInstanceId()
-                val currentInstances = getInstances()
-                val inst = currentInstances.find { it.id == activeId }
-                if (inst != null && inst.wanUrl != extUrl) {
-                    updateInstanceWanUrl(activeId, extUrl)
-                    wanUrl = extUrl
-                    Log.i("MainActivity", "Auto-synced WAN URL into active instance: $extUrl")
-                } else if (currentInstances.isEmpty() && wanUrl != extUrl) {
-                    wanUrl = extUrl
-                    sharedPreferences.edit().putString("server_wan_url", extUrl).apply()
-                    Log.i("MainActivity", "Auto-synced WAN URL into preferences: $extUrl")
-                }
-            }
-            startNetworkMonitoring()
-        }
+        roamingManager = NetworkRoamingManager(this)
         orchestrator = NotificationOrchestrator(this)
         subnetScanner = SubnetScanner(this)
 
@@ -147,11 +124,11 @@ class MainActivity : AppCompatActivity() {
         setupGestureInterceptors()
         setupControlListeners()
 
-        // Check if configuration is set; if not (or if it's default), launch Onboarding Wizard
+        // Check if configuration is set; if not (or if it's default), force showing the Setup screen
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
         if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
-            Log.i("MainActivity", "App not configured or has default dummy URL. Launching Onboarding Wizard.")
-            showOnboardingWizard()
+            Log.i("MainActivity", "App not configured or has default dummy URL. Forcing Setup dialog.")
+            toggleSettingsOverlay(true)
         } else {
             // 6. Connect to back-end services (only when configured)
             startAuraServices()
@@ -445,15 +422,6 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         applySystemImmersiveMode()
-        checkBiometricSecurityOnResume()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        // If Companion mode with biometric vault enabled, lock state when leaving app
-        if (!isKioskMode && isBiometricEnabled) {
-            isBiometricUnlocked = false
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -557,10 +525,6 @@ class MainActivity : AppCompatActivity() {
 
         tempSelectedTheme = sharedPreferences.getString("app_theme", "DARK") ?: "DARK"
         applyTheme(tempSelectedTheme)
-
-        isBiometricEnabled = sharedPreferences.getBoolean("is_biometric_enabled", false)
-        binding.switchBiometricLock.isChecked = isBiometricEnabled
-        binding.layoutBiometricLock.visibility = if (isKioskMode) View.GONE else View.VISIBLE
 
         if (isKioskMode) {
             binding.radioKiosk.isChecked = true
@@ -791,97 +755,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Normalizes a host string by trimming, removing scheme and port if present, and converting to lowercase.
-     */
-    private fun normalizeHost(raw: String?): String? {
-        if (raw.isNullOrBlank()) return null
-        val trimmed = raw.trim()
-        val directUri = runCatching { Uri.parse(trimmed) }.getOrNull()
-        if (directUri != null && !directUri.host.isNullOrBlank()) {
-            return directUri.host?.lowercase()
-        }
-        val withScheme = if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) "http://$trimmed" else trimmed
-        val schemeUri = runCatching { Uri.parse(withScheme) }.getOrNull()
-        if (schemeUri != null && !schemeUri.host.isNullOrBlank()) {
-            return schemeUri.host?.lowercase()
-        }
-        val withoutPort = trimmed.split(":").firstOrNull()?.trim()?.lowercase()
-        return if (withoutPort.isNullOrEmpty()) null else withoutPort
-    }
-
-    /**
-     * Checks if target host belongs to local private IP ranges (RFC 1918), mDNS (.local), or localhost.
-     */
-    private fun isLocalPrivateHost(host: String): Boolean {
-        val lower = host.lowercase()
-        if (lower == "localhost" || lower == "127.0.0.1" || lower.endsWith(".local")) {
-            return true
-        }
-        // 10.0.0.0/8 or 192.168.0.0/16
-        if (lower.startsWith("10.") || lower.startsWith("192.168.")) {
-            return true
-        }
-        // 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
-        if (lower.startsWith("172.")) {
-            val parts = lower.split(".")
-            if (parts.size >= 2) {
-                val second = parts[1].toIntOrNull()
-                if (second != null && second in 16..31) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    /**
-     * Comprehensive whitelist test: hub LAN/WAN routes or local private home services must NEVER be kicked out to external browser!
-     */
-    private fun isKnownHubRoute(uri: Uri): Boolean {
-        val targetHost = uri.host?.lowercase() ?: return true // about:blank, relative, javascript:
-
-        // 1. Same host navigation as current active URL
-        val mainHost = normalizeHost(activeUrl)
-        if (!mainHost.isNullOrEmpty() && targetHost.equals(mainHost, ignoreCase = true)) {
-            return true
-        }
-
-        // 2. Currently resolved roaming route
-        val resolvedHost = normalizeHost(lanUrl)
-        if (!resolvedHost.isNullOrEmpty() && targetHost.equals(resolvedHost, ignoreCase = true)) {
-            return true
-        }
-        val wanResolvedHost = normalizeHost(wanUrl)
-        if (!wanResolvedHost.isNullOrEmpty() && targetHost.equals(wanResolvedHost, ignoreCase = true)) {
-            return true
-        }
-
-        // 3. Local private network address (10.x, 192.168.x, 172.16-31.x, *.local, localhost)
-        if (isLocalPrivateHost(targetHost)) {
-            return true
-        }
-
-        // 4. All instances across multi-hub configurations
-        try {
-            val instances = getInstances()
-            for (inst in instances) {
-                val lHost = normalizeHost(inst.lanUrl)
-                if (!lHost.isNullOrEmpty() && targetHost.equals(lHost, ignoreCase = true)) {
-                    return true
-                }
-                val wHost = normalizeHost(inst.wanUrl)
-                if (!wHost.isNullOrEmpty() && targetHost.equals(wHost, ignoreCase = true)) {
-                    return true
-                }
-            }
-        } catch (e: Exception) {
-            // Ignore error
-        }
-
-        return false
-    }
-
-    /**
      * Intercepts external URLs in the main frame and forces opening them in the default system browser.
      */
     private fun handleUrlRedirection(url: String): Boolean {
@@ -899,8 +772,22 @@ class MainActivity : AppCompatActivity() {
                 return false
             }
             
-            // 2. Check whitelist for known hub route, all instances, and local private subnets
-            val isInternal = isKnownHubRoute(uri)
+            val targetHost = uri.host ?: return false
+            
+            // 2. Open external links in default browser
+            val mainUri = runCatching { Uri.parse(activeUrl) }.getOrNull()
+            val mainHost = mainUri?.host
+            
+            val lanHost = runCatching { Uri.parse(lanUrl).host }.getOrNull()
+            val wanHost = runCatching { Uri.parse(wanUrl).host }.getOrNull()
+            
+            val isLocal = targetHost.equals("localhost", ignoreCase = true) || targetHost.equals("127.0.0.1")
+            
+            // If the target host matches our current main host, or lan host, or wan host, or is localhost, it's internal
+            val isInternal = (mainHost != null && targetHost.equals(mainHost, ignoreCase = true)) ||
+                    (lanHost != null && targetHost.equals(lanHost, ignoreCase = true)) ||
+                    (wanHost != null && targetHost.equals(wanHost, ignoreCase = true)) ||
+                    isLocal
                     
             if (!isInternal) {
                 Log.d("MainActivity", "Intercepted external URL loading in main frame: $url. Opening in external browser...")
@@ -1111,8 +998,6 @@ class MainActivity : AppCompatActivity() {
         binding.txtDeviceModeLabel.text = res.getString(R.string.device_mode)
         binding.radioKiosk.text = res.getString(R.string.mode_kiosk)
         binding.radioCompanion.text = res.getString(R.string.mode_companion)
-        binding.txtBiometricTitle.text = res.getString(R.string.biometric_lock_title)
-        binding.txtBiometricDesc.text = res.getString(R.string.biometric_lock_desc)
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
         
@@ -1249,10 +1134,6 @@ class MainActivity : AppCompatActivity() {
                 showPanel(isAddPanel = false)
             } else {
                 toggleSettingsOverlay(false)
-                val isConfigured = sharedPreferences.getBoolean("is_configured", false)
-                if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
-                    showOnboardingWizard()
-                }
             }
         }
 
@@ -1273,15 +1154,7 @@ class MainActivity : AppCompatActivity() {
             val isKiosk = checkedId == R.id.radioKiosk
             sharedPreferences.edit().putBoolean("is_kiosk_mode", isKiosk).apply()
             isKioskMode = isKiosk
-            binding.layoutBiometricLock.visibility = if (isKioskMode) View.GONE else View.VISIBLE
             updateScreenLocking()
-        }
-
-        // Biometric security vault toggle listener
-        binding.switchBiometricLock.setOnCheckedChangeListener { _, isChecked ->
-            binding.switchBiometricLock.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            sharedPreferences.edit().putBoolean("is_biometric_enabled", isChecked).apply()
-            isBiometricEnabled = isChecked
         }
 
         // Add Instance transitions
@@ -2038,16 +1911,10 @@ class MainActivity : AppCompatActivity() {
             // 根据当前是否处于演示模式，动态切换 一键进入 vs 一键退出 按钮的显隐
             val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
             if (isDemo) {
-                binding.layoutDemoBanner.visibility = View.VISIBLE
-                binding.btnExitDemoBanner.setOnClickListener {
-                    it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-                    executeFactoryResetAndShowOnboarding()
-                }
                 binding.btnQuickDemo.visibility = View.GONE
                 binding.btnExitDemo.visibility = View.VISIBLE
                 binding.btnWipeData.visibility = View.GONE
             } else {
-                binding.layoutDemoBanner.visibility = View.GONE
                 binding.btnQuickDemo.visibility = View.VISIBLE
                 binding.btnExitDemo.visibility = View.GONE
                 val isConfigured = sharedPreferences.getBoolean("is_configured", false)
@@ -2466,10 +2333,6 @@ class MainActivity : AppCompatActivity() {
      * Prevents system back button click from crashing or closing Kiosk shell.
      */
     override fun onBackPressed() {
-        if (binding.biometricLockOverlayLayout.overlayBiometricLock.visibility == View.VISIBLE) {
-            // Cannot dismiss lock screen via back button in companion mode
-            return
-        }
         if (binding.settingsOverlay.visibility == View.VISIBLE) {
             toggleSettingsOverlay(false)
         } else if (binding.webView.canGoBack()) {
@@ -2527,9 +2390,6 @@ class MainActivity : AppCompatActivity() {
         recoveryHandler.removeCallbacks(recoveryRunnable)
         if (::subnetScanner.isInitialized) {
             subnetScanner.stopScan()
-        }
-        if (::roamingManager.isInitialized) {
-            roamingManager.stopNetworkMonitoring()
         }
     }
 
@@ -2659,13 +2519,13 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 try {
                     val activeId = getActiveInstanceId()
-                    val currentInstances = getInstances()
-                    val inst = currentInstances.find { it.id == activeId }
+                    val inst = instances.find { it.id == activeId }
                     if (inst != null && inst.wanUrl != trimmedWan) {
-                        updateInstanceWanUrl(activeId, trimmedWan)
+                        val updated = inst.copy(wanUrl = trimmedWan)
+                        addOrUpdateInstance(updated, select = false)
                         wanUrl = trimmedWan
                         Log.i("AuraJSBridge", "Synced WAN URL from server into active instance: $trimmedWan")
-                    } else if (currentInstances.isEmpty() && wanUrl != trimmedWan) {
+                    } else if (instances.isEmpty() && wanUrl != trimmedWan) {
                         wanUrl = trimmedWan
                         sharedPreferences.edit().putString("server_wan_url", trimmedWan).apply()
                         Log.i("AuraJSBridge", "Synced WAN URL from server into legacy preferences: $trimmedWan")
@@ -2799,16 +2659,6 @@ class MainActivity : AppCompatActivity() {
             sharedPreferences.edit().putString("instances_json", array.toString()).apply()
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-    }
-
-    private fun updateInstanceWanUrl(targetId: String, newWanUrl: String) {
-        val current = getInstances()
-        val index = current.indexOfFirst { it.id == targetId }
-        if (index != -1) {
-            val updated = current.toMutableList()
-            updated[index] = updated[index].copy(wanUrl = newWanUrl)
-            saveInstances(updated)
         }
     }
 
@@ -3147,470 +2997,5 @@ class MainActivity : AppCompatActivity() {
         }
         clearAppCacheAndWebView(this)
         recreate()
-    }
-
-    // =========================================================================
-    // 4-Step Onboarding Wizard & Official Sandbox Engine
-    // =========================================================================
-
-    data class OnboardingSlide(val imageRes: Int, val titleRes: Int, val descRes: Int)
-
-    private var onboardingConnectView: View? = null
-    private val discoveredCandidateHosts = mutableListOf<DiscoveredHost>()
-
-    private fun showOnboardingWizard() {
-        binding.onboardingOverlayLayout.onboardingOverlay.visibility = View.VISIBLE
-        binding.onboardingOverlayLayout.onboardingOverlay.alpha = 1f
-
-        binding.onboardingOverlayLayout.onboardingViewPager.adapter = OnboardingAdapter { connectView ->
-            onboardingConnectView = connectView
-            setupOnboardingConnectPage(connectView)
-        }
-
-        binding.onboardingOverlayLayout.onboardingViewPager.registerOnPageChangeCallback(object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                updateOnboardingIndicators(position)
-                val isLastPage = position == 3
-                val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
-                binding.onboardingOverlayLayout.btnOnboardingNext.text = if (isLastPage) {
-                    if (isZh) "手动配置服务器" else "Manual Configure"
-                } else {
-                    if (isZh) "下一步" else "Next"
-                }
-            }
-        })
-
-        binding.onboardingOverlayLayout.btnOnboardingNext.setOnClickListener {
-            val current = binding.onboardingOverlayLayout.onboardingViewPager.currentItem
-            if (current < 3) {
-                binding.onboardingOverlayLayout.btnOnboardingNext.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-                binding.onboardingOverlayLayout.onboardingViewPager.currentItem = current + 1
-            } else {
-                binding.onboardingOverlayLayout.btnOnboardingNext.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-                hideOnboardingWizard()
-                toggleSettingsOverlay(true)
-            }
-        }
-
-        setupOnboardingLangButtons()
-        updateOnboardingIndicators(0)
-        startOnboardingSubnetScan()
-    }
-
-    private fun hideOnboardingWizard() {
-        binding.onboardingOverlayLayout.onboardingOverlay.visibility = View.GONE
-        if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
-            subnetScanner.stopScan()
-        }
-    }
-
-    private fun updateOnboardingIndicators(position: Int) {
-        val dots = listOf(
-            binding.onboardingOverlayLayout.indicatorDot0,
-            binding.onboardingOverlayLayout.indicatorDot1,
-            binding.onboardingOverlayLayout.indicatorDot2,
-            binding.onboardingOverlayLayout.indicatorDot3
-        )
-        val density = resources.displayMetrics.density
-        for (i in dots.indices) {
-            val dot = dots[i]
-            val params = dot.layoutParams
-            if (i == position) {
-                params.width = (20 * density).toInt()
-                dot.setBackgroundResource(R.drawable.bg_onboarding_capsule_active)
-            } else {
-                params.width = (6 * density).toInt()
-                dot.setBackgroundResource(R.drawable.bg_onboarding_capsule_inactive)
-            }
-            dot.layoutParams = params
-        }
-    }
-
-    private fun setupOnboardingLangButtons() {
-        val isZh = tempSelectedLang == "zh"
-        val isZhTw = tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
-        val isEn = tempSelectedLang == "en"
-
-        fun updateToggleStyles(zh: Boolean, tw: Boolean, en: Boolean) {
-            binding.onboardingOverlayLayout.btnOnboardingLangZh.apply {
-                setBackgroundColor(if (zh) Color.parseColor("#00FFC2") else Color.TRANSPARENT)
-                setTextColor(if (zh) Color.BLACK else Color.parseColor("#8E8E93"))
-            }
-            binding.onboardingOverlayLayout.btnOnboardingLangZhTw.apply {
-                setBackgroundColor(if (tw) Color.parseColor("#00FFC2") else Color.TRANSPARENT)
-                setTextColor(if (tw) Color.BLACK else Color.parseColor("#8E8E93"))
-            }
-            binding.onboardingOverlayLayout.btnOnboardingLangEn.apply {
-                setBackgroundColor(if (en) Color.parseColor("#00FFC2") else Color.TRANSPARENT)
-                setTextColor(if (en) Color.BLACK else Color.parseColor("#8E8E93"))
-            }
-        }
-        updateToggleStyles(isZh, isZhTw, isEn)
-
-        binding.onboardingOverlayLayout.btnOnboardingLangZh.setOnClickListener {
-            tempSelectedLang = "zh"
-            sharedPreferences.edit().putString("app_language", "zh").apply()
-            setAppLocale(this, "zh")
-            recreate()
-        }
-        binding.onboardingOverlayLayout.btnOnboardingLangZhTw.setOnClickListener {
-            tempSelectedLang = "zh-rTW"
-            sharedPreferences.edit().putString("app_language", "zh-rTW").apply()
-            setAppLocale(this, "zh-rTW")
-            recreate()
-        }
-        binding.onboardingOverlayLayout.btnOnboardingLangEn.setOnClickListener {
-            tempSelectedLang = "en"
-            sharedPreferences.edit().putString("app_language", "en").apply()
-            setAppLocale(this, "en")
-            recreate()
-        }
-    }
-
-    private fun startOnboardingSubnetScan() {
-        discoveredCandidateHosts.clear()
-        
-        // Start radar pulsing icon animation
-        onboardingConnectView?.let { view ->
-            val radarIcon = view.findViewById<ImageView>(R.id.imgRadarIcon)
-            radarIcon?.animate()?.alpha(0.4f)?.setDuration(600)?.withEndAction {
-                radarIcon.animate().alpha(1.0f).setDuration(600).start()
-            }?.start()
-        }
-
-        subnetScanner.startScan(object : SubnetScanner.ScanCallback {
-            override fun onHostDiscovered(host: DiscoveredHost) {
-                runOnUiThread {
-                    val existingHosts = getInstances().mapNotNull { runCatching { Uri.parse(it.lanUrl).host }.getOrNull() }
-                    val hostUri = runCatching { Uri.parse(host.url) }.getOrNull()
-                    val hostAddress = hostUri?.host ?: host.displayAddress
-                    if (!existingHosts.contains(hostAddress) && !discoveredCandidateHosts.any { it.url == host.url }) {
-                        discoveredCandidateHosts.add(host)
-                        onboardingConnectView?.let { renderOnboardingDiscoveredHosts(it) }
-                    }
-                }
-            }
-
-            override fun onScanProgress(current: Int, total: Int) {
-                runOnUiThread {
-                    onboardingConnectView?.let { view ->
-                        val radarIcon = view.findViewById<ImageView>(R.id.imgRadarIcon)
-                        radarIcon?.rotation = (radarIcon?.rotation ?: 0f) + 15f
-                    }
-                }
-            }
-
-            override fun onScanCompleted(candidates: List<DiscoveredHost>) {
-                runOnUiThread {
-                    onboardingConnectView?.let { view ->
-                        view.findViewById<ProgressBar>(R.id.progressConnectScanning)?.visibility = View.GONE
-                        val radarIcon = view.findViewById<ImageView>(R.id.imgRadarIcon)
-                        radarIcon?.animate()?.cancel()
-                        radarIcon?.alpha = 1.0f
-                        radarIcon?.rotation = 0f
-                        val statusText = view.findViewById<TextView>(R.id.txtConnectStatus)
-                        val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
-                        if (discoveredCandidateHosts.isEmpty()) {
-                            statusText?.text = if (isZh) "未在当前 Wi-Fi 发现可用中枢，请检查网络或手动配置" else "No hubs discovered. Check Wi-Fi or configure manually."
-                        } else {
-                            statusText?.text = if (isZh) "已在当前网络发现 ${discoveredCandidateHosts.size} 台中枢（点击直连）：" else "Found ${discoveredCandidateHosts.size} hubs on network (tap to connect):"
-                        }
-                    }
-                }
-            }
-        })
-    }
-
-    private fun renderOnboardingDiscoveredHosts(connectView: View) {
-        val container = connectView.findViewById<LinearLayout>(R.id.containerOnboardingDiscovered) ?: return
-        container.removeAllViews()
-
-        for (host in discoveredCandidateHosts) {
-            val card = layoutInflater.inflate(R.layout.item_discovered_host, container, false)
-            card.findViewById<TextView>(R.id.txtHostTitle)?.text = if (tempSelectedLang.startsWith("zh")) "Aura Grid 智能中枢" else "Aura Grid Home"
-            card.findViewById<TextView>(R.id.txtHostAddress)?.text = host.displayAddress
-            card.findViewById<TextView>(R.id.txtHostLatency)?.text = "${host.latencyMs}ms"
-
-            card.setOnClickListener {
-                card.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-                hideOnboardingWizard()
-                toggleSettingsOverlay(true)
-                showPanel(isAddPanel = true)
-                binding.inputLanUrl.setText(host.url)
-                val defaultName = if (tempSelectedLang.startsWith("zh")) "我的家" else "My Home"
-                binding.inputInstanceName.setText(defaultName)
-            }
-            container.addView(card)
-        }
-    }
-
-    private fun setupOnboardingConnectPage(connectView: View) {
-        renderOnboardingDiscoveredHosts(connectView)
-
-        connectView.findViewById<View>(R.id.cardExploreDemo)?.setOnClickListener {
-            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            connectToOfficialDemo()
-        }
-
-        connectView.findViewById<View>(R.id.btnOnboardingManualConnect)?.setOnClickListener {
-            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            hideOnboardingWizard()
-            toggleSettingsOverlay(true)
-        }
-    }
-
-    private fun connectToOfficialDemo() {
-        val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
-        Toast.makeText(this, if (isZh) "正在连接官方演示沙盒..." else "Connecting to official demo sandbox...", Toast.LENGTH_SHORT).show()
-        executor.execute {
-            var token: String? = null
-            var errorMsg: String? = null
-            try {
-                val authURL = URL("https://demo2.iaura.cn/api/v1/auth/login")
-                val connection = authURL.openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.5 (Android; Mobile)")
-                connection.connectTimeout = 6000
-                connection.readTimeout = 6000
-                connection.doOutput = true
-
-                val jsonInputString = "{\"username\": \"admin\", \"password\": \"123456\"}"
-                connection.outputStream.use { os ->
-                    val input = jsonInputString.toByteArray(charset("utf-8"))
-                    os.write(input, 0, input.size)
-                }
-
-                val code = connection.responseCode
-                if (code == 200 || code == 201) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObject = JSONObject(response)
-                    if (jsonObject.has("access_token")) {
-                        token = jsonObject.getString("access_token")
-                    }
-                } else {
-                    errorMsg = "HTTP $code"
-                }
-            } catch (e: Exception) {
-                errorMsg = e.localizedMessage
-            }
-
-            val finalToken = token
-            val finalError = errorMsg
-            runOnUiThread {
-                if (finalToken != null) {
-                    val demoInstanceId = "demo-sandbox-node"
-                    sharedPreferences.edit().apply {
-                        putBoolean("is_demo_mode", true)
-                        putBoolean("is_configured", true)
-                        putString("server_lan_url", "https://demo2.iaura.cn")
-                        putString("server_wan_url", "https://demo2.iaura.cn")
-                        putString("auth_user", "admin")
-                        putString("auth_token", finalToken)
-                        putString("auth_token_$demoInstanceId", finalToken)
-                        apply()
-                    }
-                    val demoInstance = AuraGridInstance(
-                        id = demoInstanceId,
-                        name = if (isZh) "官方演示沙盒" else "Official Demo Sandbox",
-                        lanUrl = "https://demo2.iaura.cn",
-                        wanUrl = "https://demo2.iaura.cn",
-                        username = "admin"
-                    )
-                    saveInstances(listOf(demoInstance))
-                    setActiveInstanceId(demoInstanceId)
-
-                    hideOnboardingWizard()
-                    toggleSettingsOverlay(false)
-                    loadSavedConfig()
-                    startAuraServices()
-                    routeAndLoadUrl()
-
-                    Toast.makeText(this, if (isZh) "已进入官方演示系统" else "Connected to official demo", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "Demo login failed: $finalError", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun executeFactoryResetAndShowOnboarding() {
-        sharedPreferences.edit().apply {
-            putBoolean("is_demo_mode", false)
-            putBoolean("is_configured", false)
-            remove("instances_json")
-            remove("active_instance_id")
-            remove("server_lan_url")
-            remove("server_wan_url")
-            remove("auth_token")
-            remove("auth_user")
-            remove("auth_pass")
-            apply()
-        }
-        binding.webView.clearCache(true)
-        binding.webView.clearFormData()
-        binding.webView.clearHistory()
-        android.webkit.CookieManager.getInstance().removeAllCookies(null)
-
-        toggleSettingsOverlay(false)
-        loadSavedConfig()
-        showOnboardingWizard()
-    }
-
-    inner class OnboardingAdapter(
-        private val onConnectBound: (View) -> Unit
-    ) : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
-
-        private val TYPE_SLIDE = 0
-        private val TYPE_CONNECT = 1
-
-        private val slides = listOf(
-            OnboardingSlide(R.drawable.ob_hero_digital_twin, R.string.ob_welcome_title, R.string.ob_welcome_subtitle),
-            OnboardingSlide(R.drawable.ob_local_radar_shield, R.string.ob_feature2_title, R.string.ob_feature2_desc),
-            OnboardingSlide(R.drawable.ob_dual_roaming_rings, R.string.ob_feature3_title, R.string.ob_feature3_desc)
-        )
-
-        override fun getItemCount(): Int = 4
-
-        override fun getItemViewType(position: Int): Int = if (position < 3) TYPE_SLIDE else TYPE_CONNECT
-
-        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
-            return if (viewType == TYPE_SLIDE) {
-                val view = layoutInflater.inflate(R.layout.item_onboarding_slide, parent, false)
-                SlideViewHolder(view)
-            } else {
-                val view = layoutInflater.inflate(R.layout.item_onboarding_connect, parent, false)
-                ConnectViewHolder(view)
-            }
-        }
-
-        override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
-            if (holder is SlideViewHolder && position < slides.size) {
-                val data = slides[position]
-                holder.imgHero.setImageResource(data.imageRes)
-                holder.txtTitle.setText(data.titleRes)
-                holder.txtDesc.setText(data.descRes)
-            } else if (holder is ConnectViewHolder) {
-                onConnectBound(holder.itemView)
-            }
-        }
-
-        inner class SlideViewHolder(view: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view) {
-            val imgHero: ImageView = view.findViewById(R.id.imgSlideHero)
-            val txtTitle: TextView = view.findViewById(R.id.txtSlideTitle)
-            val txtDesc: TextView = view.findViewById(R.id.txtSlideSubtitle)
-        }
-
-        inner class ConnectViewHolder(view: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view)
-    }
-
-    // ==========================================
-    // 🛡️ Biometric Security Vault (Companion Mode)
-    // ==========================================
-
-    /**
-     * Inspects security policy when the app resumes from background.
-     * In Companion mode with biometric security enabled, presents biometric auth
-     * before revealing the home digital twin canvas.
-     */
-    private fun checkBiometricSecurityOnResume() {
-        val isConfigured = sharedPreferences.getBoolean("is_configured", false)
-        if (isKioskMode || !isBiometricEnabled || !isConfigured || isBiometricUnlocked) {
-            return
-        }
-
-        // Display lock screen overlay
-        val lockLayout = binding.biometricLockOverlayLayout.overlayBiometricLock
-        lockLayout.visibility = View.VISIBLE
-        lockLayout.alpha = 1f
-
-        val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
-        hint.visibility = View.GONE
-
-        binding.biometricLockOverlayLayout.btnTriggerUnlock.setOnClickListener {
-            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            showBiometricPrompt()
-        }
-
-        // Automatically trigger biometric prompt
-        showBiometricPrompt()
-    }
-
-    /**
-     * Launches Android BiometricPrompt with biometric or device credential fallback.
-     */
-    private fun showBiometricPrompt() {
-        val biometricManager = BiometricManager.from(this)
-        val canAuth = biometricManager.canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or 
-            BiometricManager.Authenticators.BIOMETRIC_WEAK or 
-            BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        )
-
-        if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            Log.w("MainActivity", "Biometric authentication unavailable on this device (code: $canAuth)")
-            val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
-            hint.text = getString(R.string.biometric_not_available)
-            hint.visibility = View.VISIBLE
-            // Allow manual bypass if device has no biometric hardware enrolled
-            binding.biometricLockOverlayLayout.btnTriggerUnlock.text = getString(R.string.biometric_use_password)
-            binding.biometricLockOverlayLayout.btnTriggerUnlock.setOnClickListener {
-                unlockBiometricVault()
-            }
-            return
-        }
-
-        val executor = ContextCompat.getMainExecutor(this)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                Log.i("MainActivity", "Biometric authentication succeeded.")
-                unlockBiometricVault()
-            }
-
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                Log.w("MainActivity", "Biometric authentication error ($errorCode): $errString")
-                val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
-                hint.text = "$errString"
-                hint.visibility = View.VISIBLE
-            }
-
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                Log.w("MainActivity", "Biometric authentication failed.")
-                val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
-                hint.text = getString(R.string.biometric_failed)
-                hint.visibility = View.VISIBLE
-            }
-        })
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(getString(R.string.biometric_prompt_title))
-            .setSubtitle(getString(R.string.biometric_prompt_subtitle))
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or 
-                BiometricManager.Authenticators.BIOMETRIC_WEAK or 
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
-            .build()
-
-        prompt.authenticate(promptInfo)
-    }
-
-    /**
-     * Unlocks the screen overlay and reveals the WebView canvas.
-     */
-    private fun unlockBiometricVault() {
-        isBiometricUnlocked = true
-        val lockLayout = binding.biometricLockOverlayLayout.overlayBiometricLock
-        lockLayout.animate()
-            .alpha(0f)
-            .setDuration(250)
-            .withEndAction {
-                lockLayout.visibility = View.GONE
-                applySystemImmersiveMode()
-            }
-            .start()
     }
 }

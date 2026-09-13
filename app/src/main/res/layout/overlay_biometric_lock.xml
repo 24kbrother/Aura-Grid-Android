@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/overlayBiometricLock"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FA08080C"
+    android:clickable="true"
+    android:focusable="true"
+    android:visibility="gone">
+
+    <!-- Central Security Card -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="28dp"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="16dp"
+        app:cardBackgroundColor="#1A1F2E"
+        app:layout_constraintWidth_max="380dp"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="28dp"
+            android:paddingVertical="36dp">
+
+            <!-- Biometric Vault Graphic -->
+            <ImageView
+                android:id="@+id/imgBiometricIcon"
+                android:layout_width="88dp"
+                android:layout_height="88dp"
+                android:src="@drawable/ob_biometric_vault"
+                android:contentDescription="Biometric Security" />
+
+            <TextView
+                android:id="@+id/txtLockTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/biometric_prompt_title"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.02" />
+
+            <TextView
+                android:id="@+id/txtLockSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/biometric_prompt_subtitle"
+                android:textColor="#88FFFFFF"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:lineSpacingExtra="3dp" />
+
+            <!-- Unlock Trigger Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTriggerUnlock"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="28dp"
+                android:text="@string/biometric_prompt_title"
+                android:textColor="#08080C"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                app:backgroundTint="#00FFCC"
+                app:cornerRadius="12dp"
+                app:elevation="4dp" />
+
+            <TextView
+                android:id="@+id/txtBiometricStatusHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text=""
+                android:textColor="#FF4D4D"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+</androidx.constraintlayout.widget.ConstraintLayout>

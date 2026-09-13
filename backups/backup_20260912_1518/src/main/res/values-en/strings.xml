@@ -7,7 +7,6 @@
     <string name="settings_desc">Node Configuration</string>
     <string name="btn_add_node">ADD NEW SECURE NODE</string>
     <string name="btn_verify_add">VERIFY &amp; ADD</string>
-    <string name="btn_save_changes">VERIFY &amp; SAVE</string>
     <string name="advanced_settings">Advanced Settings</string>
     <string name="confirm_wipe_warning">TAP AGAIN TO CONFIRM WIPE!</string>
     <string name="back_to_list">◀ BACK</string>
@@ -18,7 +17,7 @@
     <string name="device_mode">Device Work Mode</string>
     <string name="mode_kiosk">Wall Kiosk (Keep Screen On)</string>
     <string name="mode_companion">Companion (Mobile)</string>
-    <string name="system_language">System Language / 系统语言</string>
+    <string name="system_language">System Language</string>
     <string name="lang_zh">中文 (简体)</string>
     <string name="lang_en">English</string>
     <string name="cancel">Cancel</string>
@@ -53,36 +52,4 @@
     <string name="no_hub_found">No hubs found. Please check WiFi connection.</string>
     <string name="hub_discovered">Discovered Aura Grid Hub</string>
     <string name="discovered_hubs_hint">Discovered Hubs (Tap to Fill):</string>
-
-    <!-- Onboarding Experience -->
-    <string name="ob_welcome_title">AURA GRID</string>
-    <string name="ob_welcome_subtitle">Next-Gen Whole-Home Digital Twin Hub\nImmersive · Offline First · Sub-10ms</string>
-    <string name="ob_feature1_title">Digital Twin Hub</string>
-    <string name="ob_feature1_desc">3D Holographic Spatial Lighting Render\nDirect device status reflection with instant touch control</string>
-    <string name="ob_feature2_title">Local Radar &amp; Privacy Shield</string>
-    <string name="ob_feature2_desc">Zero Cloud Data · 100% Local Processing\nHome IoT privacy and telemetry strictly stored on your local network</string>
-    <string name="ob_feature3_title">Dual Roaming &amp; Security Vault</string>
-    <string name="ob_feature3_desc">Zero latency on home Wi-Fi · Seamless cellular roaming\nBiometric authentication combined with hardware-level fingerprint</string>
-    <string name="ob_connect_title">Connect Space Hub</string>
-    <string name="ob_connect_scanning">Probing local network for Aura Grid servers…</string>
-    <string name="ob_connect_discovered">Available Space Hubs (Tap to Connect):</string>
-    <string name="ob_connect_manual">Manual Server IP &amp; Credentials</string>
-    <string name="ob_next">Next</string>
-    <string name="ob_start">Connect Hub</string>
-    <string name="ob_demo_title">✨ Explore Official Demo</string>
-    <string name="ob_demo_desc">No local server needed. Instant 1-second token exchange for live sandbox</string>
-    <string name="ob_demo_tag">SANDBOX</string>
-    <string name="ob_demo_hint">Launch Demo →</string>
-    <string name="demo_banner_title">✨ Official Sandbox Demo Mode</string>
-    <string name="demo_banner_desc">Currently running on official public sandbox. Exit demo anytime to configure your private home hub.</string>
-    <string name="demo_banner_exit">Exit Demo &amp; Configure Home System</string>
-
-    <!-- Biometric Security & Vault -->
-    <string name="biometric_lock_title">Biometric Security Vault</string>
-    <string name="biometric_lock_desc">Require Face / Fingerprint unlock when opening Aura Grid in Companion mode</string>
-    <string name="biometric_prompt_title">Unlock Aura Grid</string>
-    <string name="biometric_prompt_subtitle">Verify biometric identity to access home digital twin</string>
-    <string name="biometric_not_available">Biometric authentication is not supported or not enrolled on this device</string>
-    <string name="biometric_failed">Verification failed. Tap to retry</string>
-    <string name="biometric_use_password">Use Device PIN / Password</string>
 </resources>
