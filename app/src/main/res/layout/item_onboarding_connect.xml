@@ -92,7 +92,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="✨ 探索官方演示系统"
+                        android:text="@string/ob_demo_title"
                         android:textColor="@color/text_primary"
                         android:textSize="15sp"
                         android:textStyle="bold" />
@@ -114,7 +114,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="无需自建服务器，1 秒换取凭证直达真实全功能演示大屏"
+                    android:text="@string/ob_demo_desc"
                     android:textColor="#C4B5FD"
                     android:textSize="12sp"
                     android:lineSpacingExtra="2dp" />
@@ -124,7 +124,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="即刻进入体验 →"
+                    android:text="@string/ob_demo_hint"
                     android:textColor="#E9D5FF"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -138,7 +138,7 @@
                 android:layout_height="44dp"
                 android:layout_marginTop="14dp"
                 android:layout_marginBottom="16dp"
-                android:text="手动输入中枢 IP 与凭据"
+                android:text="@string/ob_connect_manual"
                 android:textColor="@color/neon_teal"
                 android:textSize="12sp"
                 app:strokeColor="#3300FFC2"

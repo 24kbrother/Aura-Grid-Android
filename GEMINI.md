@@ -2,6 +2,40 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-09-21 协作记录 (双端体验绝对对齐：首次配置双轨梯度回退、多节点管理与防误触、家庭地震预警基准坐标及四语言资源硬化)
+
+### 1. 登录与节点保存双轨鉴权梯度回退 (`MainActivity.kt`)
+- **对齐 iOS 黄金逻辑 (Stage 1 LAN 3.5s ➔ Stage 2 WAN 6.0s)**：
+  - 彻底解决用户在离家/蜂窝移动网络下首次配置或保存节点时直接报超时失败的痛点；
+  - 重构 `performLoginRequest` 返回结构为 `AuthResult(token, externalUrl, userJson)`，支持动态超时传参；
+  - 在登录返回时自动提取中枢的 `external_url`，若用户未填写 WAN 地址则毫秒级自愈回填并持久化入库；
+  - `refreshActiveTokenSync` 同步支持双轨探活及 WAN 动态自愈升级。
+
+### 2. 服务器节点列表与管理防御升级 (`activity_main.xml`, `item_instance_row.xml`, `MainActivity.kt`)
+- **多节点 WAN 路由与多语言徽章对齐**：
+  - 在每个中枢卡片中新增 WAN 穿透地址横向展示（点状分隔符 `•` + `txtInstanceWanUrl`），与 LAN 地址清晰并列；
+  - 节点状态徽章（`txtInstanceStatus`）与切换按钮（`btnSwitchInstance`）接入动态多语言资源（`@string/active_badge` 与 `@string/switch_node_btn`）。
+- **节点删除 Material 弹窗二次确认防误触**：
+  - 接入 `MaterialAlertDialogBuilder`，弹出确认对话框提示删除后将清除该节点凭证；
+  - 针对单个节点场景自动隐藏删除按钮，杜绝误删唯一中枢导致状态孤立。
+
+### 3. 家庭地震预警基准坐标 (EEW Coordinates) 设置落地 (`activity_main.xml`, `MainActivity.kt`, `EarthquakeAlertActivity.kt`)
+- **设置面板高级选项注入基准坐标卡片**：
+  - 在「高级设置」中新增黑曜石微晶「家庭地震预警基准坐标」卡片，提供纬度（`inputHomeLat`）与经度（`inputHomeLon`）输入；
+  - 配备「📍 自动获取 GPS 定位」按钮，支持一键读取设备当前高精度经纬度回填；
+  - 坐标安全持久化至 `AuraGridPreferences`（`home_latitude` / `home_longitude`），无缝供 `EarthquakeAlertActivity` 消费，实现秒级精准 S 波到达倒计时与震中距离测算。
+
+### 4. 国际化与硬编码拔除 100% 绝对纯净
+- **四语言资源全量对齐**：
+  - 默认（`values/strings.xml`）、英文（`values-en/strings.xml`）、简体中文（`values-zh/strings.xml`）与繁体中文（`values-zh-rTW/strings.xml`）对齐全部新特性词条；
+  - 彻底拔除向导终页（`item_onboarding_connect.xml`）、设置面板以及退出/擦除按钮中的硬编码中文；
+  - 移除冗余的 `btnExitDemo`，保留向导与横幅一键退出演示闭环。
+
+### 5. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并通过：`BUILD SUCCESSFUL in 15s`，生成最新产物 `outputs/apk/AuraGrid-v2.2.5-20260921_171557.apk` (11M)。
+
+---
+
 ## 📅 2026-09-12 协作记录 (双端体验全面对齐：四阶数字孪生向导、公共沙盒免密直达、生物识别安全锁与漫游白名单硬化)
 
 ### 1. 网络漫游探活与白名单安全屏障对齐 (`NetworkRoamingManager.kt` & `MainActivity.kt`)

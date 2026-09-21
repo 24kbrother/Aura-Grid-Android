@@ -36,5 +36,6 @@ implementation_plan.md
 
 # Exclude compiled output APKs and distributions to prevent bloat
 /outputs/
+backups/
 
 

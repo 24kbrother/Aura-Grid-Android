@@ -554,6 +554,8 @@ class MainActivity : AppCompatActivity() {
         // Earthquake home coordinates
         homeLatitude = sharedPreferences.getFloat("home_latitude", 0f).toDouble()
         homeLongitude = sharedPreferences.getFloat("home_longitude", 0f).toDouble()
+        binding.inputHomeLat.setText(if (homeLatitude != 0.0) homeLatitude.toString() else "")
+        binding.inputHomeLon.setText(if (homeLongitude != 0.0) homeLongitude.toString() else "")
 
         tempSelectedTheme = sharedPreferences.getString("app_theme", "DARK") ?: "DARK"
         applyTheme(tempSelectedTheme)
@@ -1102,6 +1104,7 @@ class MainActivity : AppCompatActivity() {
         binding.txtSettingsTitle.text = res.getString(R.string.settings_title)
         binding.txtSettingsDesc.text = res.getString(R.string.settings_desc)
         
+        binding.layoutInstanceName.hint = res.getString(R.string.instance_alias_hint)
         binding.layoutLanUrl.hint = res.getString(R.string.server_lan_url)
         binding.layoutWanUrl.hint = res.getString(R.string.server_wan_url)
         binding.layoutUsername.hint = res.getString(R.string.username)
@@ -1113,24 +1116,16 @@ class MainActivity : AppCompatActivity() {
         binding.radioCompanion.text = res.getString(R.string.mode_companion)
         binding.txtBiometricTitle.text = res.getString(R.string.biometric_lock_title)
         binding.txtBiometricDesc.text = res.getString(R.string.biometric_lock_desc)
+
+        binding.txtEewCoordsTitle.text = res.getString(R.string.eew_coords_title)
+        binding.txtEewCoordsDesc.text = res.getString(R.string.eew_coords_desc)
+        binding.layoutHomeLat.hint = res.getString(R.string.latitude)
+        binding.layoutHomeLon.hint = res.getString(R.string.longitude)
+        binding.btnAddInstance.text = res.getString(R.string.btn_add_node)
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
-        
-        binding.btnQuickDemo.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "一鍵進入演示系統"
-            "zh" -> "体验虚拟系统"
-            else -> "ENTER DEMO MODE"
-        }
-        binding.btnExitDemo.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "一鍵退出演示系統"
-            "zh" -> "结束体验"
-            else -> "EXIT DEMO MODE"
-        }
-        binding.btnWipeData.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "擦除數據並退出"
-            "zh" -> "擦除数据并退出"
-            else -> "ERASE DATA & EXIT"
-        }
+        binding.btnQuickDemo.text = res.getString(R.string.quick_demo_btn)
+        binding.btnWipeData.text = res.getString(R.string.wipe_data_btn)
         binding.btnCheckUpdate.text = res.getString(R.string.check_updates)
         binding.txtWebZoomLabel.text = res.getString(R.string.web_zoom)
         
@@ -1371,19 +1366,27 @@ class MainActivity : AppCompatActivity() {
             binding.btnSaveSettings.isEnabled = false
 
             executor.execute {
-                // Try logging in via LAN first
-                var token = performLoginRequest(lanStr, userStr, passStr)
+                // 1. Try logging in via LAN first (3.5s timeout)
+                var authResult = performLoginRequest(lanStr, userStr, passStr, timeoutMs = 3500)
                 
-                // If LAN fails, try WAN if it is configured
-                if (token == null && wanStr.isNotEmpty() && !wanStr.contains("yourdomain.com")) {
-                    token = performLoginRequest(wanStr, userStr, passStr)
+                // 2. If LAN fails, try WAN fallback if configured (6.0s timeout)
+                if (authResult == null && wanStr.isNotEmpty() && !wanStr.contains("yourdomain.com")) {
+                    authResult = performLoginRequest(wanStr, userStr, passStr, timeoutMs = 6000)
                 }
 
-                val finalToken = token
+                // 3. Auto-discover WAN URL from response if user didn't provide one
+                var effectiveWanStr = wanStr
+                val extUrl = authResult?.externalUrl
+                if (effectiveWanStr.isEmpty() && !extUrl.isNullOrEmpty()) {
+                    effectiveWanStr = extUrl
+                    Log.i("MainActivity", "Auto-discovered WAN URL from login: $effectiveWanStr")
+                }
+
+                val finalAuth = authResult
                 runOnUiThread {
                     binding.btnSaveSettings.isEnabled = true
                     val activeRes = getLocalizedResources(this@MainActivity, tempSelectedLang)
-                    if (finalToken != null) {
+                    if (finalAuth != null) {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#00FF66")) // Green for success
                         binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
                         
@@ -1393,7 +1396,7 @@ class MainActivity : AppCompatActivity() {
                                 val isCurrentActive = (targetId == getActiveInstanceId())
                                 val isNewNode = (editingInstanceId == null)
 
-                                val inst = AuraGridInstance(targetId, nameStr, lanStr, wanStr, userStr)
+                                val inst = AuraGridInstance(targetId, nameStr, lanStr, effectiveWanStr, userStr)
                                 val list = getInstances().toMutableList()
                                 val existingIdx = list.indexOfFirst { it.id == targetId }
                                 if (existingIdx >= 0) {
@@ -1403,9 +1406,18 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 saveInstances(list)
                                 
+                                // Extract and persist home coordinates
+                                val latInput = binding.inputHomeLat.text?.toString()?.toDoubleOrNull() ?: homeLatitude
+                                val lonInput = binding.inputHomeLon.text?.toString()?.toDoubleOrNull() ?: homeLongitude
+                                homeLatitude = latInput
+                                homeLongitude = lonInput
+
                                 sharedPreferences.edit().apply {
                                     putString("auth_pass_$targetId", passStr)
-                                    putString("auth_token_$targetId", finalToken)
+                                    putString("auth_token_$targetId", finalAuth.token)
+                                    putString("auth_user_$targetId", finalAuth.userJson)
+                                    putFloat("home_latitude", homeLatitude.toFloat())
+                                    putFloat("home_longitude", homeLongitude.toFloat())
                                     putBoolean("is_configured", true)
                                     apply()
                                 }
@@ -1518,26 +1530,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnExitDemo.setOnClickListener {
-            sharedPreferences.edit().apply {
-                remove("server_lan_url")
-                remove("server_wan_url")
-                remove("auth_user")
-                remove("auth_pass")
-                remove("auth_token")
-                putBoolean("is_demo_mode", false)
-                putBoolean("is_configured", false)
-                apply()
-            }
-            // Stop the WebSocket foreground monitoring service to release resources cleanly
-            try {
-                stopService(Intent(this, AuraSocketService::class.java))
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            clearAppCacheAndWebView(this)
-            recreate()
-        }
 
         // Safety double-confirmation wipe button click listener
         binding.btnWipeData.setOnClickListener {
@@ -2044,12 +2036,10 @@ class MainActivity : AppCompatActivity() {
                     executeFactoryResetAndShowOnboarding()
                 }
                 binding.btnQuickDemo.visibility = View.GONE
-                binding.btnExitDemo.visibility = View.VISIBLE
                 binding.btnWipeData.visibility = View.GONE
             } else {
                 binding.layoutDemoBanner.visibility = View.GONE
                 binding.btnQuickDemo.visibility = View.VISIBLE
-                binding.btnExitDemo.visibility = View.GONE
                 val isConfigured = sharedPreferences.getBoolean("is_configured", false)
                 binding.btnWipeData.visibility = if (isConfigured) View.VISIBLE else View.GONE
             }
@@ -2290,20 +2280,27 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    data class AuthResult(
+        val token: String,
+        val externalUrl: String? = null,
+        val userJson: String = "{}"
+    )
+
     /**
-     * Helper to perform programmatic login against the backend NestJS endpoint
+     * Helper to perform programmatic login against the backend NestJS endpoint.
+     * Aligned with iOS client AuthEngine.
      */
-    private fun performLoginRequest(baseUrl: String, user: String, pass: String): String? {
+    private fun performLoginRequest(baseUrl: String, user: String, pass: String, timeoutMs: Int = 3500): AuthResult? {
         var connection: java.net.HttpURLConnection? = null
         return try {
             val cleanUrl = if (baseUrl.endsWith("/")) baseUrl.substring(0, baseUrl.length - 1) else baseUrl
             val url = java.net.URL("$cleanUrl/api/v1/auth/login")
             connection = url.openConnection() as java.net.HttpURLConnection
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
+            connection.connectTimeout = timeoutMs
+            connection.readTimeout = timeoutMs
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.4 (Android; Mobile)")
+            connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.5 (Android; Mobile)")
             connection.doOutput = true
 
             val jsonParam = org.json.JSONObject().apply {
@@ -2322,7 +2319,11 @@ class MainActivity : AppCompatActivity() {
             if (connection.responseCode in 200..299) {
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
                 val jsonObj = org.json.JSONObject(response)
-                jsonObj.optString("access_token", null)
+                val token = if (jsonObj.has("access_token")) jsonObj.getString("access_token") else return null
+                val userObj = jsonObj.optJSONObject("user")
+                val userJson = userObj?.toString() ?: org.json.JSONObject().apply { put("username", user) }.toString()
+                val extUrl = jsonObj.optString("external_url", "").takeIf { it.isNotBlank() }
+                AuthResult(token = token, externalUrl = extUrl, userJson = userJson)
             } else {
                 null
             }
@@ -2875,7 +2876,6 @@ class MainActivity : AppCompatActivity() {
         binding.instancesListContainer.removeAllViews()
         val instances = getInstances()
         val activeId = getActiveInstanceId()
-        val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
 
         for (inst in instances) {
             val view = layoutInflater.inflate(R.layout.item_instance_row, binding.instancesListContainer, false)
@@ -2886,12 +2886,25 @@ class MainActivity : AppCompatActivity() {
             val txtInstanceName = view.findViewById<android.widget.TextView>(R.id.txtInstanceName)
             val txtInstanceStatus = view.findViewById<android.widget.TextView>(R.id.txtInstanceStatus)
             val txtInstanceLanUrl = view.findViewById<android.widget.TextView>(R.id.txtInstanceLanUrl)
+            val txtInstanceDotWan = view.findViewById<android.widget.TextView>(R.id.txtInstanceDotWan)
+            val txtInstanceWanUrl = view.findViewById<android.widget.TextView>(R.id.txtInstanceWanUrl)
             val btnSwitchInstance = view.findViewById<android.widget.TextView>(R.id.btnSwitchInstance)
             val btnEditInstance = view.findViewById<android.widget.ImageView>(R.id.btnEditInstance)
             val btnDeleteInstance = view.findViewById<android.widget.ImageView>(R.id.btnDeleteInstance)
 
+            val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+
             txtInstanceName.text = inst.name
             txtInstanceLanUrl.text = inst.lanUrl
+
+            if (inst.wanUrl.isNotBlank()) {
+                txtInstanceDotWan.visibility = View.VISIBLE
+                txtInstanceWanUrl.visibility = View.VISIBLE
+                txtInstanceWanUrl.text = inst.wanUrl
+            } else {
+                txtInstanceDotWan.visibility = View.GONE
+                txtInstanceWanUrl.visibility = View.GONE
+            }
 
             val isActive = inst.id == activeId
 
@@ -2900,7 +2913,7 @@ class MainActivity : AppCompatActivity() {
                 imgActiveDot.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E5FF"))
                 
                 txtInstanceStatus.visibility = View.VISIBLE
-                txtInstanceStatus.text = if (isZh) "已激活" else "ACTIVE"
+                txtInstanceStatus.text = res.getString(R.string.active_badge)
                 
                 btnSwitchInstance.visibility = View.GONE
                 
@@ -2916,7 +2929,7 @@ class MainActivity : AppCompatActivity() {
                 imgActiveDot.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#8E8E93"))
                 txtInstanceStatus.visibility = View.GONE
                 btnSwitchInstance.visibility = View.VISIBLE
-                btnSwitchInstance.text = if (isZh) "切换" else "SWITCH"
+                btnSwitchInstance.text = res.getString(R.string.switch_node_btn)
                 
                 // Normal instance background: subtle border
                 val normalBg = android.graphics.drawable.GradientDrawable().apply {
@@ -2942,8 +2955,20 @@ class MainActivity : AppCompatActivity() {
                 showPanel(isAddPanel = true, isEditing = true)
             }
 
-            btnDeleteInstance.setOnClickListener {
-                deleteInstance(inst)
+            if (instances.size > 1) {
+                btnDeleteInstance.visibility = View.VISIBLE
+                btnDeleteInstance.setOnClickListener {
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle(res.getString(R.string.delete_node_confirm_title))
+                        .setMessage(res.getString(R.string.delete_node_confirm_desc, inst.name))
+                        .setPositiveButton(res.getString(R.string.delete_node_btn)) { _, _ ->
+                            deleteInstance(inst)
+                        }
+                        .setNegativeButton(res.getString(R.string.cancel), null)
+                        .show()
+                }
+            } else {
+                btnDeleteInstance.visibility = View.GONE
             }
 
             binding.instancesListContainer.addView(view)
@@ -2964,9 +2989,20 @@ class MainActivity : AppCompatActivity() {
         )
 
         for (route in routes) {
-            val token = performLoginRequest(route, activeInst.username, savedPass)
-            if (!token.isNullOrEmpty()) {
-                sharedPreferences.edit().putString("auth_token_${activeInst.id}", token).apply()
+            val authResult = performLoginRequest(route, activeInst.username, savedPass)
+            if (authResult != null && authResult.token.isNotEmpty()) {
+                val editor = sharedPreferences.edit()
+                editor.putString("auth_token_${activeInst.id}", authResult.token)
+                if (authResult.userJson.isNotEmpty()) {
+                    editor.putString("auth_user_${activeInst.id}", authResult.userJson)
+                }
+                editor.apply()
+
+                val extUrl = authResult.externalUrl
+                if (activeInst.wanUrl.isBlank() && !extUrl.isNullOrBlank()) {
+                    updateInstanceWanUrl(activeInst.id, extUrl)
+                }
+
                 Log.i("MainActivity", "Background auto-login succeeded for instance ${activeInst.id}")
                 return true
             }
@@ -3129,11 +3165,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun resetWipeButtonState() {
         isConfirmingWipe = false
-        binding.btnWipeData.text = when (tempSelectedLang) {
-            "zh-rTW", "zh-TW" -> "擦除數據並退出"
-            "zh" -> "擦除数据并退出"
-            else -> "ERASE DATA & EXIT"
-        }
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        binding.btnWipeData.text = res.getString(R.string.wipe_data_btn)
         binding.btnWipeData.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
         binding.btnWipeData.setTextColor(Color.parseColor("#FF3333"))
     }

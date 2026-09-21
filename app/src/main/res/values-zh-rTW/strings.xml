@@ -85,4 +85,25 @@
     <string name="biometric_not_available">當前裝置未錄入或不支援生物辨識硬體</string>
     <string name="biometric_failed">身分驗證未通過，請輕點重試</string>
     <string name="biometric_use_password">使用裝置鎖定密碼</string>
+
+    <!-- Node Management & Actions -->
+    <string name="delete_node_confirm_title">移除中樞節點</string>
+    <string name="delete_node_confirm_desc">確定要移除該中樞節點嗎？此操作將清除該中樞的本地憑據且不可撤回。</string>
+    <string name="delete_node_btn">刪除節點</string>
+    <string name="instance_alias_hint">實例名稱 / 別名</string>
+    <string name="instance_alias_placeholder">例如：別墅住家</string>
+    <string name="active_badge">已激活</string>
+    <string name="switch_node_btn">切換</string>
+
+    <!-- Earthquake Early Warning (EEW) Coordinates -->
+    <string name="eew_coords_title">地震預警基準座標</string>
+    <string name="eew_coords_desc">家庭中樞基準座標，在無 GPS 訊號時作為離線計算烈度的靜態基準。</string>
+    <string name="latitude">緯度 (Latitude)</string>
+    <string name="longitude">經度 (Longitude)</string>
+    <string name="auto_gps">自動定位 / 尚未配置</string>
+
+    <!-- System Actions -->
+    <string name="wipe_data_btn">擦除數據並退出</string>
+    <string name="quick_demo_btn">體驗虛擬系統</string>
+    <string name="exit_demo_btn">退出演示模式</string>
 </resources>

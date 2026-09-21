@@ -84,4 +84,25 @@
     <string name="biometric_not_available">Biometric authentication is not supported or not enrolled on this device</string>
     <string name="biometric_failed">Verification failed. Tap to retry</string>
     <string name="biometric_use_password">Use Device PIN / Password</string>
+
+    <!-- Node Management & Actions -->
+    <string name="delete_node_confirm_title">Delete Node</string>
+    <string name="delete_node_confirm_desc">Are you sure you want to remove this hub node? This will wipe stored credentials on this device and cannot be undone.</string>
+    <string name="delete_node_btn">Delete</string>
+    <string name="instance_alias_hint">Instance Name / Alias</string>
+    <string name="instance_alias_placeholder">e.g. Villa Home</string>
+    <string name="active_badge">ACTIVE</string>
+    <string name="switch_node_btn">SWITCH</string>
+
+    <!-- Earthquake Early Warning (EEW) Coordinates -->
+    <string name="eew_coords_title">Earthquake Alert Coordinates</string>
+    <string name="eew_coords_desc">Base coordinates for intensity calculation when GPS is unavailable.</string>
+    <string name="latitude">Latitude</string>
+    <string name="longitude">Longitude</string>
+    <string name="auto_gps">Auto GPS / Not Set</string>
+
+    <!-- System Actions -->
+    <string name="wipe_data_btn">Wipe Data &amp; Exit</string>
+    <string name="quick_demo_btn">Experience Virtual System</string>
+    <string name="exit_demo_btn">Exit Sandbox Demo</string>
 </resources>

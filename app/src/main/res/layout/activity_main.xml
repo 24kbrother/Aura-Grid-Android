@@ -320,11 +320,11 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="实例名称 / 别名"
+                        android:hint="@string/instance_alias_hint"
                         android:textColorHint="@color/text_secondary"
                         app:hintTextColor="@color/neon_teal"
                         app:boxStrokeColor="@color/neon_teal"
-                        app:placeholderText="例如：别墅住家"
+                        app:placeholderText="@string/instance_alias_placeholder"
                         app:placeholderTextColor="@color/text_secondary"
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
@@ -630,6 +630,94 @@
                             android:layout_marginBottom="12dp"
                             android:background="#1AFFFFFF" />
 
+                        <!-- Earthquake Early Warning (EEW) Coordinates -->
+                        <LinearLayout
+                            android:id="@+id/layoutEewCoords"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/txtEewCoordsTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/eew_coords_title"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/txtEewCoordsDesc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/eew_coords_desc"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="horizontal">
+
+                                <com.google.android.material.textfield.TextInputLayout
+                                    android:id="@+id/layoutHomeLat"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginEnd="6dp"
+                                    android:hint="@string/latitude"
+                                    android:textColorHint="@color/text_secondary"
+                                    app:hintTextColor="@color/neon_teal"
+                                    app:boxStrokeColor="@color/neon_teal"
+                                    app:placeholderText="30.5728"
+                                    app:placeholderTextColor="@color/text_secondary"
+                                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                    <com.google.android.material.textfield.TextInputEditText
+                                        android:id="@+id/inputHomeLat"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="13sp"
+                                        android:fontFamily="monospace"
+                                        android:inputType="numberDecimal|numberSigned" />
+                                </com.google.android.material.textfield.TextInputLayout>
+
+                                <com.google.android.material.textfield.TextInputLayout
+                                    android:id="@+id/layoutHomeLon"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginStart="6dp"
+                                    android:hint="@string/longitude"
+                                    android:textColorHint="@color/text_secondary"
+                                    app:hintTextColor="@color/neon_teal"
+                                    app:boxStrokeColor="@color/neon_teal"
+                                    app:placeholderText="104.0668"
+                                    app:placeholderTextColor="@color/text_secondary"
+                                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                    <com.google.android.material.textfield.TextInputEditText
+                                        android:id="@+id/inputHomeLon"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="13sp"
+                                        android:fontFamily="monospace"
+                                        android:inputType="numberDecimal|numberSigned" />
+                                </com.google.android.material.textfield.TextInputLayout>
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="#1AFFFFFF" />
+
                         <!-- App Theme selector -->
                         <TextView
                             android:id="@+id/txtAppThemeLabel"
@@ -807,7 +895,7 @@
                                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:text="体验虚拟系统"
+                                android:text="@string/quick_demo_btn"
                                 android:textColor="@color/neon_teal"
                                 android:textSize="12sp"
                                 android:textStyle="bold"
@@ -819,30 +907,12 @@
                                 app:iconPadding="4dp" />
 
                             <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnExitDemo"
-                                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
-                                android:text="结束体验"
-                                android:textColor="#FF3333"
-                                android:textSize="12sp"
-                                android:textStyle="bold"
-                                app:strokeColor="#FF3333"
-                                app:strokeWidth="1.5dp"
-                                app:cornerRadius="6dp"
-                                app:icon="@android:drawable/ic_menu_close_clear_cancel"
-                                app:iconTint="#FF3333"
-                                app:iconPadding="4dp"
-                                android:visibility="gone" />
-
-                            <com.google.android.material.button.MaterialButton
                                 android:id="@+id/btnCheckUpdate"
                                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="8dp"
-                                android:text="检查更新"
+                                android:text="@string/check_updates"
                                 android:textColor="@color/neon_teal"
                                 android:textSize="12sp"
                                 android:textStyle="bold"
@@ -859,7 +929,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="8dp"
-                                android:text="擦除数据并退出"
+                                android:text="@string/wipe_data_btn"
                                 android:textColor="#FF3333"
                                 android:textSize="12sp"
                                 android:textStyle="bold"
