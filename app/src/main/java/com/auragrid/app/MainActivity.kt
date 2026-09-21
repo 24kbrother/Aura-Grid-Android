@@ -24,12 +24,19 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.RadioButton
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.ProgressBar
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.auragrid.app.databinding.ActivityMainBinding
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
 import java.security.MessageDigest
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
@@ -47,13 +54,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var roamingManager: NetworkRoamingManager
     private lateinit var orchestrator: NotificationOrchestrator
+    private lateinit var subnetScanner: SubnetScanner
     private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private var lanUrl = ""
     private var wanUrl = ""
     private var isKioskMode = true
+    private var isBiometricEnabled = false
+    private var isBiometricUnlocked = false
     private var activeUrl = ""
     private var tempSelectedLang = "zh"
+    private var tempSelectedZoom = 100
+    private var tempSelectedTheme = "DARK"
+
+    // Earthquake Early Warning: home coordinates (fallback when GPS unavailable)
+    private var homeLatitude: Double = 0.0
+    private var homeLongitude: Double = 0.0
+
+    // Multi-instance & safety state variables
+    private var editingInstanceId: String? = null
+    private var isAdvancedExpanded = false
+    private var isConfirmingWipe = false
+    private val resetWipeRunnable = Runnable { resetWipeButtonState() }
+    private val wipeHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private var isErrorState = false
     private val recoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -85,11 +108,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeAfterPrivacy() {
+        // Migrate legacy single-instance config to the multi-node collection
+        migrateLegacyConfigIfNeeded()
+
         // Load other configuration values
         loadSavedConfig()
 
-        roamingManager = NetworkRoamingManager(this)
+        roamingManager = NetworkRoamingManager(this).apply {
+            onWanUrlDiscovered = { extUrl ->
+                val activeId = getActiveInstanceId()
+                val currentInstances = getInstances()
+                val inst = currentInstances.find { it.id == activeId }
+                if (inst != null && inst.wanUrl != extUrl) {
+                    updateInstanceWanUrl(activeId, extUrl)
+                    wanUrl = extUrl
+                    Log.i("MainActivity", "Auto-synced WAN URL into active instance: $extUrl")
+                } else if (currentInstances.isEmpty() && wanUrl != extUrl) {
+                    wanUrl = extUrl
+                    sharedPreferences.edit().putString("server_wan_url", extUrl).apply()
+                    Log.i("MainActivity", "Auto-synced WAN URL into preferences: $extUrl")
+                }
+            }
+            startNetworkMonitoring()
+        }
         orchestrator = NotificationOrchestrator(this)
+        subnetScanner = SubnetScanner(this)
 
         // 2. Configure hardware screen locking based on mode
         updateScreenLocking()
@@ -104,41 +147,43 @@ class MainActivity : AppCompatActivity() {
         setupGestureInterceptors()
         setupControlListeners()
 
-        // 6. Connect to back-end services
-        startAuraServices()
-
-        // Check if configuration is set; if not (or if it's default), force showing the Setup screen
+        // Check if configuration is set; if not (or if it's default), launch Onboarding Wizard
         val isConfigured = sharedPreferences.getBoolean("is_configured", false)
         if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
-            Log.i("MainActivity", "App not configured or has default dummy URL. Forcing Setup dialog.")
-            toggleSettingsOverlay(true)
+            Log.i("MainActivity", "App not configured or has default dummy URL. Launching Onboarding Wizard.")
+            showOnboardingWizard()
         } else {
+            // 6. Connect to back-end services (only when configured)
+            startAuraServices()
+
             // 7. Route & Load Optimal URL
             routeAndLoadUrl()
         }
 
         // 8. Handle any incoming deep-link intents (e.g., notification clicks)
         handleIntent(intent)
-
-        // 9. Asynchronously check for GitHub OTA updates 2 seconds after boot
-        recoveryHandler.postDelayed({
-            checkOtaUpdates()
-        }, 2000L)
     }
 
     /**
      * Checks for GitHub Releases OTA Updates.
      */
-    fun checkOtaUpdates() {
-        Log.i("MainActivity", "Triggering asynchronous GitHub OTA update check...")
+    fun checkOtaUpdates(manualTrigger: Boolean = false) {
+        Log.i("MainActivity", "Triggering asynchronous GitHub OTA update check (manual=$manualTrigger)...")
         val context = this@MainActivity
+        
+        if (manualTrigger) {
+            runOnUiThread {
+                Toast.makeText(context, getString(R.string.checking_updates), Toast.LENGTH_SHORT).show()
+            }
+        }
+        
         com.auragrid.app.update.UpdateService.checkForUpdates(context, object : com.auragrid.app.update.UpdateService.UpdateCallback {
             override fun onUpdateAvailable(remoteVersion: String, downloadUrl: String, notes: String, sizeBytes: Long) {
                 val currentVer = try {
                     val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                    packageInfo.versionName ?: "2.1.0-OTA"
+                    packageInfo.versionName ?: "2.2.3"
                 } catch (e: Exception) {
-                    "2.1.0-OTA"
+                    "2.2.3"
                 }
                 
                 com.auragrid.app.update.UpdateDialog.show(
@@ -154,10 +199,20 @@ class MainActivity : AppCompatActivity() {
 
             override fun onNoUpdate() {
                 Log.d("MainActivity", "OTA update check: App is already up-to-date.")
+                if (manualTrigger) {
+                    runOnUiThread {
+                        Toast.makeText(context, getString(R.string.no_updates_available), Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
 
             override fun onError(error: String) {
                 Log.w("MainActivity", "OTA update check failed: $error")
+                if (manualTrigger) {
+                    runOnUiThread {
+                        Toast.makeText(context, getString(R.string.update_check_failed), Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         })
     }
@@ -390,6 +445,15 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         applySystemImmersiveMode()
+        checkBiometricSecurityOnResume()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // If Companion mode with biometric vault enabled, lock state when leaving app
+        if (!isKioskMode && isBiometricEnabled) {
+            isBiometricUnlocked = false
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -444,20 +508,61 @@ class MainActivity : AppCompatActivity() {
      * Reads saved server configuration from secure local storage.
      */
     private fun loadSavedConfig() {
-        lanUrl = sharedPreferences.getString("server_lan_url", "") ?: ""
-        wanUrl = sharedPreferences.getString("server_wan_url", "") ?: ""
-        isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
+        val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
+        if (isDemo) {
+            lanUrl = "https://demo2.iaura.cn"
+            wanUrl = "https://demo2.iaura.cn"
+            isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
+            binding.inputLanUrl.setText(lanUrl)
+            binding.inputWanUrl.setText(wanUrl)
+            binding.inputUsername.setText("admin")
+            binding.inputPassword.setText("123456")
+        } else {
+            val activeId = getActiveInstanceId()
+            val instances = getInstances()
+            val activeInst = instances.find { it.id == activeId }
+            if (activeInst != null) {
+                lanUrl = activeInst.lanUrl
+                wanUrl = activeInst.wanUrl
+                isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
+                val savedUser = activeInst.username
+                val savedPass = sharedPreferences.getString("auth_pass_${activeInst.id}", "") ?: ""
 
-        val savedUser = sharedPreferences.getString("auth_user", "") ?: ""
-        val savedPass = sharedPreferences.getString("auth_pass", "") ?: ""
-
-        binding.inputLanUrl.setText(lanUrl)
-        binding.inputWanUrl.setText(wanUrl)
-        binding.inputUsername.setText(savedUser)
-        binding.inputPassword.setText(savedPass)
+                binding.inputInstanceName.setText(activeInst.name)
+                binding.inputLanUrl.setText(lanUrl)
+                binding.inputWanUrl.setText(wanUrl)
+                binding.inputUsername.setText(savedUser)
+                binding.inputPassword.setText(savedPass)
+            } else {
+                lanUrl = ""
+                wanUrl = ""
+                isKioskMode = sharedPreferences.getBoolean("is_kiosk_mode", true)
+                binding.inputInstanceName.setText("")
+                binding.inputLanUrl.setText("")
+                binding.inputWanUrl.setText("")
+                binding.inputUsername.setText("")
+                binding.inputPassword.setText("")
+            }
+        }
 
         tempSelectedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
         updateLanguageToggleUI(tempSelectedLang)
+
+        tempSelectedZoom = sharedPreferences.getInt("web_zoom_level", 100)
+        updateZoomToggleUI(tempSelectedZoom)
+
+        // Earthquake home coordinates
+        homeLatitude = sharedPreferences.getFloat("home_latitude", 0f).toDouble()
+        homeLongitude = sharedPreferences.getFloat("home_longitude", 0f).toDouble()
+        binding.inputHomeLat.setText(if (homeLatitude != 0.0) homeLatitude.toString() else "")
+        binding.inputHomeLon.setText(if (homeLongitude != 0.0) homeLongitude.toString() else "")
+
+        tempSelectedTheme = sharedPreferences.getString("app_theme", "DARK") ?: "DARK"
+        applyTheme(tempSelectedTheme)
+
+        isBiometricEnabled = sharedPreferences.getBoolean("is_biometric_enabled", false)
+        binding.switchBiometricLock.isChecked = isBiometricEnabled
+        binding.layoutBiometricLock.visibility = if (isKioskMode) View.GONE else View.VISIBLE
 
         if (isKioskMode) {
             binding.radioKiosk.isChecked = true
@@ -469,7 +574,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Commits configuration values to local storage.
      */
-    private fun saveConfig(newLan: String, newWan: String, user: String, pass: String, token: String, newKiosk: Boolean, newLang: String) {
+    private fun saveConfig(newLan: String, newWan: String, user: String, pass: String, token: String, newKiosk: Boolean, newLang: String, newZoom: Int) {
         lanUrl = newLan
         wanUrl = newWan
         isKioskMode = newKiosk
@@ -482,6 +587,9 @@ class MainActivity : AppCompatActivity() {
             putString("auth_token", token)
             putBoolean("is_kiosk_mode", isKioskMode)
             putString("app_language", newLang)
+            putInt("web_zoom_level", newZoom)
+            putFloat("home_latitude", homeLatitude.toFloat())
+            putFloat("home_longitude", homeLongitude.toFloat())
             putBoolean("is_configured", true)
             apply()
         }
@@ -543,6 +651,9 @@ class MainActivity : AppCompatActivity() {
         // Enforce maximum GPU and composition rendering acceleration
         binding.webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
+        val zoomLevel = sharedPreferences.getInt("web_zoom_level", 100)
+        binding.webView.setInitialScale(zoomLevel)
+
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -551,14 +662,19 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            
+
+            // Enable viewport meta tag support — respects HTML <meta name="viewport">
+            // Fixes 2.6× content scaling in portrait mode (Android defaults to ~980px desktop viewport)
+            useWideViewPort = true
+            loadWithOverviewMode = true
+
             val savedLang = sharedPreferences.getString("app_language", "zh") ?: "zh"
             val webLang = when (savedLang) {
                 "zh-rTW", "zh-TW" -> "zh-TW"
                 "en" -> "en"
                 else -> "zh-CN"
             }
-            userAgentString = "AuraGridApp/1.1.0 (Android; Mobile) Lang/$webLang"
+            userAgentString = "AuraGridApp/2.2.4 (Android; Mobile) Lang/$webLang"
             
             // Allow auto-playing live streams and camera feeds
             mediaPlaybackRequiresUserGesture = false
@@ -607,17 +723,38 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 recoveryHandler.removeCallbacks(loadTimeoutRunnable)
                 if (!isErrorState) {
-                    // Inject credentials into localStorage if they exist in SharedPreferences
-                    val token = sharedPreferences.getString("auth_token", "") ?: ""
-                    val username = sharedPreferences.getString("auth_user", "") ?: ""
+                    val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
+                    val token: String
+                    val username: String
+                    if (isDemo) {
+                        token = sharedPreferences.getString("auth_token", "") ?: ""
+                        username = sharedPreferences.getString("auth_user", "") ?: ""
+                    } else {
+                        val activeId = getActiveInstanceId()
+                        token = if (activeId.isNotEmpty()) sharedPreferences.getString("auth_token_$activeId", "") ?: "" else ""
+                        val instances = getInstances()
+                        val activeInst = instances.find { it.id == activeId }
+                        username = activeInst?.username ?: ""
+                    }
                     if (token.isNotEmpty()) {
                         Log.d("MainActivity", "Injecting authentication token into WebView localStorage.")
                         val js = """
                             (function() {
-                                if (localStorage.getItem('auth_token') !== '$token') {
-                                    localStorage.setItem('auth_token', '$token');
-                                    localStorage.setItem('auth_user', '$username');
-                                    window.location.reload();
+                                try {
+                                    var updated = false;
+                                    if (localStorage.getItem('auth_token') !== '$token') {
+                                        localStorage.setItem('auth_token', '$token');
+                                        localStorage.setItem('auth_user', '$username');
+                                        updated = true;
+                                    }
+                                    // If currently on /login, immediately navigate to /
+                                    if (window.location.pathname.indexOf('/login') !== -1 || window.location.hash.indexOf('/login') !== -1) {
+                                        window.location.replace('/');
+                                    } else if (updated) {
+                                        window.location.reload();
+                                    }
+                                } catch (e) {
+                                    console.error('[AuraGrid-Android] Token injection failed:', e);
                                 }
                             })();
                         """.trimIndent()
@@ -656,6 +793,97 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Normalizes a host string by trimming, removing scheme and port if present, and converting to lowercase.
+     */
+    private fun normalizeHost(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val trimmed = raw.trim()
+        val directUri = runCatching { Uri.parse(trimmed) }.getOrNull()
+        if (directUri != null && !directUri.host.isNullOrBlank()) {
+            return directUri.host?.lowercase()
+        }
+        val withScheme = if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) "http://$trimmed" else trimmed
+        val schemeUri = runCatching { Uri.parse(withScheme) }.getOrNull()
+        if (schemeUri != null && !schemeUri.host.isNullOrBlank()) {
+            return schemeUri.host?.lowercase()
+        }
+        val withoutPort = trimmed.split(":").firstOrNull()?.trim()?.lowercase()
+        return if (withoutPort.isNullOrEmpty()) null else withoutPort
+    }
+
+    /**
+     * Checks if target host belongs to local private IP ranges (RFC 1918), mDNS (.local), or localhost.
+     */
+    private fun isLocalPrivateHost(host: String): Boolean {
+        val lower = host.lowercase()
+        if (lower == "localhost" || lower == "127.0.0.1" || lower.endsWith(".local")) {
+            return true
+        }
+        // 10.0.0.0/8 or 192.168.0.0/16
+        if (lower.startsWith("10.") || lower.startsWith("192.168.")) {
+            return true
+        }
+        // 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
+        if (lower.startsWith("172.")) {
+            val parts = lower.split(".")
+            if (parts.size >= 2) {
+                val second = parts[1].toIntOrNull()
+                if (second != null && second in 16..31) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /**
+     * Comprehensive whitelist test: hub LAN/WAN routes or local private home services must NEVER be kicked out to external browser!
+     */
+    private fun isKnownHubRoute(uri: Uri): Boolean {
+        val targetHost = uri.host?.lowercase() ?: return true // about:blank, relative, javascript:
+
+        // 1. Same host navigation as current active URL
+        val mainHost = normalizeHost(activeUrl)
+        if (!mainHost.isNullOrEmpty() && targetHost.equals(mainHost, ignoreCase = true)) {
+            return true
+        }
+
+        // 2. Currently resolved roaming route
+        val resolvedHost = normalizeHost(lanUrl)
+        if (!resolvedHost.isNullOrEmpty() && targetHost.equals(resolvedHost, ignoreCase = true)) {
+            return true
+        }
+        val wanResolvedHost = normalizeHost(wanUrl)
+        if (!wanResolvedHost.isNullOrEmpty() && targetHost.equals(wanResolvedHost, ignoreCase = true)) {
+            return true
+        }
+
+        // 3. Local private network address (10.x, 192.168.x, 172.16-31.x, *.local, localhost)
+        if (isLocalPrivateHost(targetHost)) {
+            return true
+        }
+
+        // 4. All instances across multi-hub configurations
+        try {
+            val instances = getInstances()
+            for (inst in instances) {
+                val lHost = normalizeHost(inst.lanUrl)
+                if (!lHost.isNullOrEmpty() && targetHost.equals(lHost, ignoreCase = true)) {
+                    return true
+                }
+                val wHost = normalizeHost(inst.wanUrl)
+                if (!wHost.isNullOrEmpty() && targetHost.equals(wHost, ignoreCase = true)) {
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore error
+        }
+
+        return false
+    }
+
+    /**
      * Intercepts external URLs in the main frame and forces opening them in the default system browser.
      */
     private fun handleUrlRedirection(url: String): Boolean {
@@ -673,22 +901,8 @@ class MainActivity : AppCompatActivity() {
                 return false
             }
             
-            val targetHost = uri.host ?: return false
-            
-            // 2. Open external links in default browser
-            val mainUri = runCatching { Uri.parse(activeUrl) }.getOrNull()
-            val mainHost = mainUri?.host
-            
-            val lanHost = runCatching { Uri.parse(lanUrl).host }.getOrNull()
-            val wanHost = runCatching { Uri.parse(wanUrl).host }.getOrNull()
-            
-            val isLocal = targetHost.equals("localhost", ignoreCase = true) || targetHost.equals("127.0.0.1")
-            
-            // If the target host matches our current main host, or lan host, or wan host, or is localhost, it's internal
-            val isInternal = (mainHost != null && targetHost.equals(mainHost, ignoreCase = true)) ||
-                    (lanHost != null && targetHost.equals(lanHost, ignoreCase = true)) ||
-                    (wanHost != null && targetHost.equals(wanHost, ignoreCase = true)) ||
-                    isLocal
+            // 2. Check whitelist for known hub route, all instances, and local private subnets
+            val isInternal = isKnownHubRoute(uri)
                     
             if (!isInternal) {
                 Log.d("MainActivity", "Intercepted external URL loading in main frame: $url. Opening in external browser...")
@@ -819,13 +1033,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // 2. Fallback: Top-Right Corner 5-Click (150x150 hot zone for wall-mounted tablet friendliness)
+            // 2. Fallback: Top-Left Corner 5-Click (180x48 dp hot zone, aligned with iOS client)
             if (actionMasked == MotionEvent.ACTION_DOWN) {
                 val x = event.x
                 val y = event.y
-                val screenWidth = resources.displayMetrics.widthPixels
+                val density = resources.displayMetrics.density
+                val targetWidth = 180 * density
+                val targetHeight = 48 * density
 
-                if (x >= screenWidth - 150 && y <= 150) {
+                if (x <= targetWidth && y <= targetHeight) {
                     val currentTime = System.currentTimeMillis()
                     if (currentTime - lastCornerClickTime < 1500L) {
                         cornerClickCount++
@@ -837,7 +1053,7 @@ class MainActivity : AppCompatActivity() {
                     lastCornerClickTime = currentTime
 
                     if (cornerClickCount >= 5) {
-                        Log.i("MainActivity", "Top-Right Corner 5-Click detected! Opening settings.")
+                        Log.i("MainActivity", "Top-Left Corner 5-Click detected! Opening settings.")
                         cornerClickCount = 0
                         toggleSettingsOverlay(true)
                         return@OnTouchListener true // Intercept!
@@ -888,32 +1104,30 @@ class MainActivity : AppCompatActivity() {
         binding.txtSettingsTitle.text = res.getString(R.string.settings_title)
         binding.txtSettingsDesc.text = res.getString(R.string.settings_desc)
         
+        binding.layoutInstanceName.hint = res.getString(R.string.instance_alias_hint)
         binding.layoutLanUrl.hint = res.getString(R.string.server_lan_url)
         binding.layoutWanUrl.hint = res.getString(R.string.server_wan_url)
         binding.layoutUsername.hint = res.getString(R.string.username)
         binding.layoutPassword.hint = res.getString(R.string.password)
+        binding.btnAutoDiscoverLan.text = if (::subnetScanner.isInitialized && subnetScanner.isScanning()) res.getString(R.string.cancel) else res.getString(R.string.auto_discover_hub)
         
         binding.txtDeviceModeLabel.text = res.getString(R.string.device_mode)
         binding.radioKiosk.text = res.getString(R.string.mode_kiosk)
         binding.radioCompanion.text = res.getString(R.string.mode_companion)
+        binding.txtBiometricTitle.text = res.getString(R.string.biometric_lock_title)
+        binding.txtBiometricDesc.text = res.getString(R.string.biometric_lock_desc)
+
+        binding.txtEewCoordsTitle.text = res.getString(R.string.eew_coords_title)
+        binding.txtEewCoordsDesc.text = res.getString(R.string.eew_coords_desc)
+        binding.layoutHomeLat.hint = res.getString(R.string.latitude)
+        binding.layoutHomeLon.hint = res.getString(R.string.longitude)
+        binding.btnAddInstance.text = res.getString(R.string.btn_add_node)
         
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
-        
-        binding.btnQuickDemo.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "一鍵進入演示系統"
-            "zh" -> "一键进入演示系统"
-            else -> "ENTER DEMO MODE"
-        }
-        binding.btnExitDemo.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "一鍵退出演示系統"
-            "zh" -> "一键退出演示系统"
-            else -> "EXIT DEMO MODE"
-        }
-        binding.btnWipeData.text = when (langCode) {
-            "zh-rTW", "zh-TW" -> "擦除數據並退出"
-            "zh" -> "擦除数据并退出"
-            else -> "ERASE DATA & EXIT"
-        }
+        binding.btnQuickDemo.text = res.getString(R.string.quick_demo_btn)
+        binding.btnWipeData.text = res.getString(R.string.wipe_data_btn)
+        binding.btnCheckUpdate.text = res.getString(R.string.check_updates)
+        binding.txtWebZoomLabel.text = res.getString(R.string.web_zoom)
         
         // Handle "Save Config" vs "Save Anyway"
         val currentBtnText = binding.btnSaveSettings.text.toString()
@@ -948,30 +1162,146 @@ class MainActivity : AppCompatActivity() {
             tempSelectedLang = "zh"
             updateLanguageToggleUI(tempSelectedLang)
             applyLanguageToSettingsUI(tempSelectedLang)
+            sharedPreferences.edit().putString("app_language", tempSelectedLang).apply()
+            setAppLocale(this, tempSelectedLang)
+            recreate()
         }
 
         binding.btnLangZhTwToggle.setOnClickListener {
             tempSelectedLang = "zh-rTW"
             updateLanguageToggleUI(tempSelectedLang)
             applyLanguageToSettingsUI(tempSelectedLang)
+            sharedPreferences.edit().putString("app_language", tempSelectedLang).apply()
+            setAppLocale(this, tempSelectedLang)
+            recreate()
         }
 
         binding.btnLangEnToggle.setOnClickListener {
             tempSelectedLang = "en"
             updateLanguageToggleUI(tempSelectedLang)
             applyLanguageToSettingsUI(tempSelectedLang)
+            sharedPreferences.edit().putString("app_language", tempSelectedLang).apply()
+            setAppLocale(this, tempSelectedLang)
+            recreate()
+        }
+
+        binding.btnThemeDark.setOnClickListener {
+            tempSelectedTheme = "DARK"
+            sharedPreferences.edit().putString("app_theme", tempSelectedTheme).apply()
+            applyTheme(tempSelectedTheme)
+        }
+
+        binding.btnThemeNeon.setOnClickListener {
+            tempSelectedTheme = "NEON"
+            sharedPreferences.edit().putString("app_theme", tempSelectedTheme).apply()
+            applyTheme(tempSelectedTheme)
+        }
+
+        binding.btnThemeFrost.setOnClickListener {
+            tempSelectedTheme = "FROST"
+            sharedPreferences.edit().putString("app_theme", tempSelectedTheme).apply()
+            applyTheme(tempSelectedTheme)
+        }
+
+        binding.btnZoom75.setOnClickListener {
+            tempSelectedZoom = 75
+            updateZoomToggleUI(tempSelectedZoom)
+            sharedPreferences.edit().putInt("web_zoom_level", 75).apply()
+            binding.webView.setInitialScale(75)
+        }
+
+        binding.btnZoom90.setOnClickListener {
+            tempSelectedZoom = 90
+            updateZoomToggleUI(tempSelectedZoom)
+            sharedPreferences.edit().putInt("web_zoom_level", 90).apply()
+            binding.webView.setInitialScale(90)
+        }
+
+        binding.btnZoom100.setOnClickListener {
+            tempSelectedZoom = 100
+            updateZoomToggleUI(tempSelectedZoom)
+            sharedPreferences.edit().putInt("web_zoom_level", 100).apply()
+            binding.webView.setInitialScale(100)
+        }
+
+        binding.btnZoom115.setOnClickListener {
+            tempSelectedZoom = 115
+            updateZoomToggleUI(tempSelectedZoom)
+            sharedPreferences.edit().putInt("web_zoom_level", 115).apply()
+            binding.webView.setInitialScale(115)
+        }
+
+        binding.btnZoom130.setOnClickListener {
+            tempSelectedZoom = 130
+            updateZoomToggleUI(tempSelectedZoom)
+            sharedPreferences.edit().putInt("web_zoom_level", 130).apply()
+            binding.webView.setInitialScale(130)
         }
 
         binding.btnCancelSettings.setOnClickListener {
-            toggleSettingsOverlay(false)
+            if (binding.layoutAddInstanceForm.visibility == View.VISIBLE) {
+                editingInstanceId = null
+                showPanel(isAddPanel = false)
+            } else {
+                toggleSettingsOverlay(false)
+                val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+                if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
+                    showOnboardingWizard()
+                }
+            }
         }
 
+        // Advanced expandable settings panel trigger listener
+        binding.layoutAdvancedTrigger.setOnClickListener {
+            isAdvancedExpanded = !isAdvancedExpanded
+            if (isAdvancedExpanded) {
+                binding.layoutAdvancedContent.visibility = View.VISIBLE
+                binding.imgAdvancedChevron.animate().rotation(180f).setDuration(200).start()
+            } else {
+                binding.layoutAdvancedContent.visibility = View.GONE
+                binding.imgAdvancedChevron.animate().rotation(0f).setDuration(200).start()
+            }
+        }
+
+        // Mode switch check listener
+        binding.radioGroupMode.setOnCheckedChangeListener { _, checkedId ->
+            val isKiosk = checkedId == R.id.radioKiosk
+            sharedPreferences.edit().putBoolean("is_kiosk_mode", isKiosk).apply()
+            isKioskMode = isKiosk
+            binding.layoutBiometricLock.visibility = if (isKioskMode) View.GONE else View.VISIBLE
+            updateScreenLocking()
+        }
+
+        // Biometric security vault toggle listener
+        binding.switchBiometricLock.setOnCheckedChangeListener { _, isChecked ->
+            binding.switchBiometricLock.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            sharedPreferences.edit().putBoolean("is_biometric_enabled", isChecked).apply()
+            isBiometricEnabled = isChecked
+        }
+
+        // Add Instance transitions
+        binding.btnAddInstance.setOnClickListener {
+            editingInstanceId = null
+            showPanel(isAddPanel = true, isEditing = false)
+        }
+
+        binding.btnBackToList.setOnClickListener {
+            editingInstanceId = null
+            showPanel(isAddPanel = false)
+        }
+
+        // Subnet auto-discovery trigger
+        binding.btnAutoDiscoverLan.setOnClickListener {
+            triggerSubnetScan()
+        }
+
+        // Form save button (VERIFY & ADD / SAVE)
         binding.btnSaveSettings.setOnClickListener {
+            val nameInput = binding.inputInstanceName.text.toString().trim()
             val lanStr = binding.inputLanUrl.text.toString().trim()
             val wanStr = binding.inputWanUrl.text.toString().trim()
             val userStr = binding.inputUsername.text.toString().trim()
             val passStr = binding.inputPassword.text.toString().trim()
-            val isKiosk = binding.radioKiosk.isChecked
             val selectedLang = tempSelectedLang
             val currentRes = getLocalizedResources(this@MainActivity, selectedLang)
 
@@ -980,12 +1310,52 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            var nameStr = nameInput
+            if (nameStr.isEmpty()) {
+                nameStr = try {
+                    val host = java.net.URL(lanStr).host
+                    if (host.isNotEmpty()) host else "Node"
+                } catch (e: Exception) {
+                    "Node"
+                }
+            }
+
             val isAnyway = binding.btnSaveSettings.text.toString() == currentRes.getString(R.string.save_anyway)
 
             // If the user chooses to bypass verification or did not enter credentials, save directly
             if (isAnyway || userStr.isEmpty()) {
-                saveConfig(lanStr, wanStr, userStr, passStr, "", isKiosk, selectedLang)
-                toggleSettingsOverlay(false)
+                val targetId = editingInstanceId ?: java.util.UUID.randomUUID().toString()
+                val isCurrentActive = (targetId == getActiveInstanceId())
+                val isNewNode = (editingInstanceId == null)
+
+                val inst = AuraGridInstance(targetId, nameStr, lanStr, wanStr, userStr)
+                val list = getInstances().toMutableList()
+                val existingIdx = list.indexOfFirst { it.id == targetId }
+                if (existingIdx >= 0) {
+                    list[existingIdx] = inst
+                } else {
+                    list.add(inst)
+                }
+                saveInstances(list)
+                
+                sharedPreferences.edit().apply {
+                    putString("auth_pass_$targetId", passStr)
+                    putString("auth_token_$targetId", "")
+                    putBoolean("is_configured", true)
+                    apply()
+                }
+                editingInstanceId = null
+                
+                if (isCurrentActive || isNewNode) {
+                    setActiveInstanceId(targetId)
+                    toggleSettingsOverlay(false)
+                    clearAppCacheAndWebView(this@MainActivity)
+                    recreate()
+                } else {
+                    showPanel(isAddPanel = false)
+                    val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+                    android.widget.Toast.makeText(this@MainActivity, if (isZh) "节点配置已更新" else "Node settings updated", android.widget.Toast.LENGTH_SHORT).show()
+                }
                 return@setOnClickListener
             }
 
@@ -996,31 +1366,74 @@ class MainActivity : AppCompatActivity() {
             binding.btnSaveSettings.isEnabled = false
 
             executor.execute {
-                // Try logging in via LAN first
-                var token = performLoginRequest(lanStr, userStr, passStr)
-                var resolvedBaseUrl = lanStr
+                // 1. Try logging in via LAN first (3.5s timeout)
+                var authResult = performLoginRequest(lanStr, userStr, passStr, timeoutMs = 3500)
                 
-                // If LAN fails, try WAN if it is configured
-                if (token == null && wanStr.isNotEmpty() && !wanStr.contains("yourdomain.com")) {
-                    token = performLoginRequest(wanStr, userStr, passStr)
-                    resolvedBaseUrl = wanStr
+                // 2. If LAN fails, try WAN fallback if configured (6.0s timeout)
+                if (authResult == null && wanStr.isNotEmpty() && !wanStr.contains("yourdomain.com")) {
+                    authResult = performLoginRequest(wanStr, userStr, passStr, timeoutMs = 6000)
                 }
 
-                val finalToken = token
+                // 3. Auto-discover WAN URL from response if user didn't provide one
+                var effectiveWanStr = wanStr
+                val extUrl = authResult?.externalUrl
+                if (effectiveWanStr.isEmpty() && !extUrl.isNullOrEmpty()) {
+                    effectiveWanStr = extUrl
+                    Log.i("MainActivity", "Auto-discovered WAN URL from login: $effectiveWanStr")
+                }
+
+                val finalAuth = authResult
                 runOnUiThread {
                     binding.btnSaveSettings.isEnabled = true
                     val activeRes = getLocalizedResources(this@MainActivity, tempSelectedLang)
-                    if (finalToken != null) {
+                    if (finalAuth != null) {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#00FF66")) // Green for success
                         binding.txtVerificationStatus.text = activeRes.getString(R.string.verification_success)
                         
-                        // Save config with verified token
-                        saveConfig(lanStr, wanStr, userStr, passStr, finalToken, isKiosk, selectedLang)
-                        
-                        // Close settings after a small delay
                         binding.txtVerificationStatus.postDelayed({
-                            toggleSettingsOverlay(false)
-                            binding.btnCancelSettings.visibility = View.VISIBLE // Restore cancel visibility
+                            if (!isFinishing && !isDestroyed) {
+                                val targetId = editingInstanceId ?: java.util.UUID.randomUUID().toString()
+                                val isCurrentActive = (targetId == getActiveInstanceId())
+                                val isNewNode = (editingInstanceId == null)
+
+                                val inst = AuraGridInstance(targetId, nameStr, lanStr, effectiveWanStr, userStr)
+                                val list = getInstances().toMutableList()
+                                val existingIdx = list.indexOfFirst { it.id == targetId }
+                                if (existingIdx >= 0) {
+                                    list[existingIdx] = inst
+                                } else {
+                                    list.add(inst)
+                                }
+                                saveInstances(list)
+                                
+                                // Extract and persist home coordinates
+                                val latInput = binding.inputHomeLat.text?.toString()?.toDoubleOrNull() ?: homeLatitude
+                                val lonInput = binding.inputHomeLon.text?.toString()?.toDoubleOrNull() ?: homeLongitude
+                                homeLatitude = latInput
+                                homeLongitude = lonInput
+
+                                sharedPreferences.edit().apply {
+                                    putString("auth_pass_$targetId", passStr)
+                                    putString("auth_token_$targetId", finalAuth.token)
+                                    putString("auth_user_$targetId", finalAuth.userJson)
+                                    putFloat("home_latitude", homeLatitude.toFloat())
+                                    putFloat("home_longitude", homeLongitude.toFloat())
+                                    putBoolean("is_configured", true)
+                                    apply()
+                                }
+                                editingInstanceId = null
+                                
+                                if (isCurrentActive || isNewNode) {
+                                    setActiveInstanceId(targetId)
+                                    toggleSettingsOverlay(false)
+                                    clearAppCacheAndWebView(this@MainActivity)
+                                    recreate()
+                                } else {
+                                    showPanel(isAddPanel = false)
+                                    val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+                                    android.widget.Toast.makeText(this@MainActivity, if (isZh) "节点配置已更新" else "Node settings updated", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }, 500)
                     } else {
                         binding.txtVerificationStatus.setTextColor(Color.parseColor("#FF3333")) // Red for error
@@ -1051,7 +1464,7 @@ class MainActivity : AppCompatActivity() {
                         connection.requestMethod = "POST"
                         connection.setRequestProperty("Content-Type", "application/json")
                         // 注入特权 Companion App User-Agent 绕过 Nginx 444 阻断
-                        connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Tablet)")
+                        connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.4 (Android; Mobile)")
                         connection.connectTimeout = 6000
                         connection.readTimeout = 6000
                         connection.doOutput = true
@@ -1098,7 +1511,7 @@ class MainActivity : AppCompatActivity() {
                             toggleSettingsOverlay(false)
                             binding.btnCancelSettings.visibility = View.VISIBLE
                             
-                            saveConfig("https://demo2.iaura.cn", "https://demo2.iaura.cn", "admin", "123456", finalToken, isKiosk, tempSelectedLang)
+                            saveConfig("https://demo2.iaura.cn", "https://demo2.iaura.cn", "admin", "123456", finalToken, isKiosk, tempSelectedLang, tempSelectedZoom)
                         } else {
                             // Restore dialog UI and display error message inside full-screen dialog
                             val scrollView = dialog.findViewById<android.widget.ScrollView>(10001)
@@ -1117,34 +1530,26 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnExitDemo.setOnClickListener {
-            sharedPreferences.edit().apply {
-                remove("server_lan_url")
-                remove("server_wan_url")
-                remove("auth_user")
-                remove("auth_pass")
-                remove("auth_token")
-                putBoolean("is_demo_mode", false)
-                putBoolean("is_configured", false)
-                apply()
+
+        // Safety double-confirmation wipe button click listener
+        binding.btnWipeData.setOnClickListener {
+            if (!isConfirmingWipe) {
+                isConfirmingWipe = true
+                val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+                binding.btnWipeData.text = res.getString(R.string.confirm_wipe_warning)
+                // Color warn style (solid red fill, white text)
+                binding.btnWipeData.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3333"))
+                binding.btnWipeData.setTextColor(Color.WHITE)
+                
+                wipeHandler.postDelayed(resetWipeRunnable, 3000L)
+            } else {
+                wipeHandler.removeCallbacks(resetWipeRunnable)
+                executeWipeData()
             }
-            clearAppCacheAndWebView(this)
-            recreate()
         }
 
-        binding.btnWipeData.setOnClickListener {
-            sharedPreferences.edit().apply {
-                remove("server_lan_url")
-                remove("server_wan_url")
-                remove("auth_user")
-                remove("auth_pass")
-                remove("auth_token")
-                putBoolean("is_demo_mode", false)
-                putBoolean("is_configured", false)
-                apply()
-            }
-            clearAppCacheAndWebView(this)
-            recreate()
+        binding.btnCheckUpdate.setOnClickListener {
+            checkOtaUpdates(manualTrigger = true)
         }
     }
 
@@ -1376,7 +1781,7 @@ class MainActivity : AppCompatActivity() {
                 addFeatureItem(
                     "1️⃣",
                     "尊享 PRO 全功能體驗",
-                    "本演示系統已全面啟用 PRO 商業版全部高級特性。您可以自由體驗多樓層連動、自定義畫布組件、安全中心駕駛艙、實時高幀率天氣動畫系統等全套工業級功能！"
+                    "本演示系統已全面啟用 PRO 商業版全部高級特性。您可以自由體驗多樓层連動、自定義畫布組件、安全中心駕駛艙、實時高幀率天氣動畫系統等全套工業級功能！"
                 )
                 addFeatureItem(
                     "2️⃣",
@@ -1391,7 +1796,7 @@ class MainActivity : AppCompatActivity() {
                 addFeatureItem(
                     "⚙️",
                     "如何退出演示模式",
-                    "提示：如果您需要退出演示模式，請使用【三根手指在屏幕任意位置連續敲擊 3 次】即可呼出后台管理設置菜單，選擇“一鍵退出演示模式”即可。"
+                    "提示：如果您需要退出演示模式，請使用【三根手指在屏幕任意位置連續敲擊 3 次】或在屏幕【左上角區域連續快速點擊 5 次】呼出后台管理設置菜單，選擇“一鍵退出演示模式”即可。"
                 )
             }
             isZh -> {
@@ -1403,7 +1808,7 @@ class MainActivity : AppCompatActivity() {
                 addFeatureItem(
                     "2️⃣",
                     "零风险仿真沙盒运行",
-                    "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请尽情点击测试！"
+                    "此环境连接的是独立的虚拟仿真数据源，您的任何开关控制、场景切换等控制指令都是完全安全的，不会影响任何真实物理设备，请点击测试！"
                 )
                 addFeatureItem(
                     "3️⃣",
@@ -1413,7 +1818,7 @@ class MainActivity : AppCompatActivity() {
                 addFeatureItem(
                     "⚙️",
                     "如何退出演示模式",
-                    "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】即可呼出后台管理设置菜单，选择“键退出演示模式”即可。"
+                    "提示：如果您需要退出演示模式，请使用【三根手指在屏幕任意位置连续敲击 3 次】或在屏幕【左上角区域连续快速点击 5 次】呼出后台管理设置菜单，选择“一键退出演示模式”即可。"
                 )
             }
             else -> {
@@ -1435,7 +1840,7 @@ class MainActivity : AppCompatActivity() {
                 addFeatureItem(
                     "⚙️",
                     "How to Exit Demo Mode",
-                    "Tip: If you need to exit demo mode, simply [triple-tap with three fingers] anywhere on the screen to invoke the admin settings, then select 'Exit Demo Mode'."
+                    "Tip: If you need to exit demo mode, simply [triple-tap with three fingers] anywhere on the screen or [consecutively tap 5 times in the top-left corner] of the screen to invoke the admin settings, then select 'Exit Demo Mode'."
                 )
             }
         }
@@ -1541,11 +1946,15 @@ class MainActivity : AppCompatActivity() {
      */
     private fun clearAppCacheAndWebView(context: android.content.Context) {
         try {
-            // 1. Clear WebView standard cache
-            val webView = android.webkit.WebView(context)
-            webView.clearCache(true)
+            // 1. Clear WebView standard cache using the existing instance safely
+            if (::binding.isInitialized) {
+                binding.webView.clearCache(true)
+            }
             
-            // 2. Clear Session and Persistent Cookies
+            // 2. Clear DOM storage (localStorage and sessionStorage)
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            
+            // 3. Clear Session and Persistent Cookies
             val cookieManager = android.webkit.CookieManager.getInstance()
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                 cookieManager.removeAllCookies(null)
@@ -1557,15 +1966,14 @@ class MainActivity : AppCompatActivity() {
                 cookieSyncMngr.stopSync()
             }
             
-            // 3. Recursively clear internal files in App Caches Directory
+            // 4. Recursively clear internal files in App Caches Directory
             val cacheDir = context.cacheDir
             if (cacheDir != null && cacheDir.isDirectory) {
                 deleteDirContents(cacheDir)
             }
             
-            // 4. Remove Webview internal persistence databases
-            context.deleteDatabase("webview.db")
-            context.deleteDatabase("webviewCache.db")
+            // Note: Avoid manually deleting "webview.db" and "webviewCache.db" direct database files 
+            // from disk while the WebView is active, as it triggers native Chromium daemon crashes.
             
             val isZh = tempSelectedLang == "zh"
             android.widget.Toast.makeText(
@@ -1615,17 +2023,23 @@ class MainActivity : AppCompatActivity() {
         if (show) {
             applyLanguageToSettingsUI(tempSelectedLang)
             binding.txtVerificationStatus.visibility = View.GONE
-            binding.btnCancelSettings.visibility = if (sharedPreferences.getBoolean("is_configured", false)) View.VISIBLE else View.GONE
             
+            // Always show the Instances List view by default when opening settings
+            showPanel(false)
+
             // 根据当前是否处于演示模式，动态切换 一键进入 vs 一键退出 按钮的显隐
             val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
             if (isDemo) {
+                binding.layoutDemoBanner.visibility = View.VISIBLE
+                binding.btnExitDemoBanner.setOnClickListener {
+                    it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    executeFactoryResetAndShowOnboarding()
+                }
                 binding.btnQuickDemo.visibility = View.GONE
-                binding.btnExitDemo.visibility = View.VISIBLE
                 binding.btnWipeData.visibility = View.GONE
             } else {
+                binding.layoutDemoBanner.visibility = View.GONE
                 binding.btnQuickDemo.visibility = View.VISIBLE
-                binding.btnExitDemo.visibility = View.GONE
                 val isConfigured = sharedPreferences.getBoolean("is_configured", false)
                 binding.btnWipeData.visibility = if (isConfigured) View.VISIBLE else View.GONE
             }
@@ -1676,19 +2090,217 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Helper to perform programmatic login against the backend NestJS endpoint
+     * Updates the segmented web zoom switcher UI toggle states dynamically.
      */
-    private fun performLoginRequest(baseUrl: String, user: String, pass: String): String? {
+    private fun updateZoomToggleUI(zoom: Int) {
+        // Reset all segments
+        binding.btnZoom75.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom75.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom75.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom90.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom90.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom90.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom100.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom100.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom100.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom115.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom115.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom115.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnZoom130.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnZoom130.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnZoom130.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        // Highlight selected
+        when (zoom) {
+            75 -> {
+                binding.btnZoom75.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom75.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom75.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            90 -> {
+                binding.btnZoom90.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom90.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom90.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            115 -> {
+                binding.btnZoom115.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom115.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom115.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            130 -> {
+                binding.btnZoom130.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom130.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom130.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            else -> { // Default 100
+                binding.btnZoom100.setBackgroundColor(android.graphics.Color.parseColor("#00E5FF"))
+                binding.btnZoom100.setTextColor(android.graphics.Color.parseColor("#000000"))
+                binding.btnZoom100.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+        }
+    }
+
+    private fun updateThemeToggleUI(theme: String) {
+        // Reset all
+        binding.btnThemeDark.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnThemeDark.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnThemeDark.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnThemeNeon.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnThemeNeon.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnThemeNeon.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        binding.btnThemeFrost.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.btnThemeFrost.setTextColor(android.graphics.Color.parseColor("#8E8E93"))
+        binding.btnThemeFrost.setTypeface(null, android.graphics.Typeface.NORMAL)
+
+        // Find the active accent color to highlight the toggle
+        val accentColor = when (theme) {
+            "NEON" -> android.graphics.Color.parseColor("#AB4FFF")
+            "FROST" -> android.graphics.Color.parseColor("#4F45E6")
+            else -> android.graphics.Color.parseColor("#00E5FF") // DARK
+        }
+
+        val textHighlightColor = if (theme == "FROST") android.graphics.Color.parseColor("#FFFFFF") else android.graphics.Color.parseColor("#000000")
+
+        when (theme) {
+            "NEON" -> {
+                binding.btnThemeNeon.setBackgroundColor(accentColor)
+                binding.btnThemeNeon.setTextColor(textHighlightColor)
+                binding.btnThemeNeon.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            "FROST" -> {
+                binding.btnThemeFrost.setBackgroundColor(accentColor)
+                binding.btnThemeFrost.setTextColor(textHighlightColor)
+                binding.btnThemeFrost.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            else -> {
+                binding.btnThemeDark.setBackgroundColor(accentColor)
+                binding.btnThemeDark.setTextColor(textHighlightColor)
+                binding.btnThemeDark.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+        }
+    }
+
+    private fun applyTheme(theme: String) {
+        val bgColor: Int
+        val panelColor: Int
+        val accentColor: Int
+        val textPrimaryColor: Int
+        val textSecondaryColor = android.graphics.Color.parseColor("#8E8E93")
+
+        when (theme) {
+            "NEON" -> {
+                bgColor = android.graphics.Color.parseColor("#120A1E")
+                panelColor = android.graphics.Color.parseColor("#1C112E")
+                accentColor = android.graphics.Color.parseColor("#AB4FFF")
+                textPrimaryColor = android.graphics.Color.parseColor("#FFFFFF")
+            }
+            "FROST" -> {
+                bgColor = android.graphics.Color.parseColor("#F5F7FA")
+                panelColor = android.graphics.Color.parseColor("#FFFFFF")
+                accentColor = android.graphics.Color.parseColor("#4F45E6")
+                textPrimaryColor = android.graphics.Color.parseColor("#000000")
+            }
+            else -> { // DARK
+                bgColor = android.graphics.Color.parseColor("#0D0D14")
+                panelColor = android.graphics.Color.parseColor("#1A1A24")
+                accentColor = android.graphics.Color.parseColor("#00E5FF")
+                textPrimaryColor = android.graphics.Color.parseColor("#FFFFFF")
+            }
+        }
+
+        // Apply to Roots & Overlays
+        binding.mainRoot.setBackgroundColor(bgColor)
+        binding.loadingOverlay.setBackgroundColor(bgColor)
+        binding.webView.setBackgroundColor(bgColor)
+        
+        // Fix Settings overlay
+        val settingsCard = binding.settingsOverlay.getChildAt(0) as? androidx.cardview.widget.CardView
+        settingsCard?.setCardBackgroundColor(panelColor)
+
+        val downloadCard = binding.downloadOverlay.getChildAt(0) as? androidx.cardview.widget.CardView
+        downloadCard?.setCardBackgroundColor(panelColor)
+
+        // Texts
+        binding.loadingText.setTextColor(accentColor)
+        binding.txtSettingsTitle.setTextColor(accentColor)
+        binding.txtSettingsDesc.setTextColor(textSecondaryColor)
+        
+        // Progress Bars
+        binding.progressBar.indeterminateTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        binding.downloadProgressBar.progressTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        binding.downloadTitle.setTextColor(accentColor)
+        binding.downloadPercent.setTextColor(accentColor)
+
+        // Buttons
+        binding.btnAddInstance.backgroundTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        binding.btnSaveSettings.backgroundTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        val textHighlightColor = if (theme == "FROST") android.graphics.Color.parseColor("#FFFFFF") else android.graphics.Color.parseColor("#000000")
+        binding.btnAddInstance.setTextColor(textHighlightColor)
+        binding.btnAddInstance.setIconTintResource(if(theme == "FROST") android.R.color.white else android.R.color.black)
+        binding.btnSaveSettings.setTextColor(textHighlightColor)
+
+        // Advanced Chevron
+        binding.imgAdvancedChevron.imageTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        (binding.layoutAdvancedTrigger.getChildAt(0) as? ImageView)?.imageTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        (binding.layoutAdvancedTrigger.getChildAt(1) as? TextView)?.setTextColor(accentColor)
+
+        // Input Layouts Colors
+        val inputLayouts = listOf(binding.layoutInstanceName, binding.layoutLanUrl, binding.layoutWanUrl, binding.layoutUsername, binding.layoutPassword)
+        for (layout in inputLayouts) {
+            layout.boxStrokeColor = accentColor
+            layout.hintTextColor = android.content.res.ColorStateList.valueOf(accentColor)
+            layout.defaultHintTextColor = android.content.res.ColorStateList.valueOf(textSecondaryColor)
+            layout.editText?.setTextColor(textPrimaryColor)
+        }
+
+        // Secondary outlined buttons
+        val outlinedButtons = listOf(binding.btnQuickDemo, binding.btnCheckUpdate)
+        for (btn in outlinedButtons) {
+            btn.setTextColor(accentColor)
+            btn.strokeColor = android.content.res.ColorStateList.valueOf(accentColor)
+            btn.iconTint = android.content.res.ColorStateList.valueOf(accentColor)
+        }
+
+        // Apply radio button tints
+        binding.radioKiosk.buttonTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        binding.radioKiosk.setTextColor(textPrimaryColor)
+        binding.radioCompanion.buttonTintList = android.content.res.ColorStateList.valueOf(accentColor)
+        binding.radioCompanion.setTextColor(textPrimaryColor)
+
+        // Ensure the current toggles are highlighted properly under the new theme
+        updateThemeToggleUI(theme)
+        updateLanguageToggleUI(tempSelectedLang)
+        updateZoomToggleUI(tempSelectedZoom)
+    }
+
+
+    data class AuthResult(
+        val token: String,
+        val externalUrl: String? = null,
+        val userJson: String = "{}"
+    )
+
+    /**
+     * Helper to perform programmatic login against the backend NestJS endpoint.
+     * Aligned with iOS client AuthEngine.
+     */
+    private fun performLoginRequest(baseUrl: String, user: String, pass: String, timeoutMs: Int = 3500): AuthResult? {
         var connection: java.net.HttpURLConnection? = null
         return try {
             val cleanUrl = if (baseUrl.endsWith("/")) baseUrl.substring(0, baseUrl.length - 1) else baseUrl
             val url = java.net.URL("$cleanUrl/api/v1/auth/login")
             connection = url.openConnection() as java.net.HttpURLConnection
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
+            connection.connectTimeout = timeoutMs
+            connection.readTimeout = timeoutMs
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("User-Agent", "AuraGridApp/1.1.0 (Android; Mobile)")
+            connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.5 (Android; Mobile)")
             connection.doOutput = true
 
             val jsonParam = org.json.JSONObject().apply {
@@ -1707,7 +2319,11 @@ class MainActivity : AppCompatActivity() {
             if (connection.responseCode in 200..299) {
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
                 val jsonObj = org.json.JSONObject(response)
-                jsonObj.optString("access_token", null)
+                val token = if (jsonObj.has("access_token")) jsonObj.getString("access_token") else return null
+                val userObj = jsonObj.optJSONObject("user")
+                val userJson = userObj?.toString() ?: org.json.JSONObject().apply { put("username", user) }.toString()
+                val extUrl = jsonObj.optString("external_url", "").takeIf { it.isNotBlank() }
+                AuthResult(token = token, externalUrl = extUrl, userJson = userJson)
             } else {
                 null
             }
@@ -1851,6 +2467,10 @@ class MainActivity : AppCompatActivity() {
      * Prevents system back button click from crashing or closing Kiosk shell.
      */
     override fun onBackPressed() {
+        if (binding.biometricLockOverlayLayout.overlayBiometricLock.visibility == View.VISIBLE) {
+            // Cannot dismiss lock screen via back button in companion mode
+            return
+        }
         if (binding.settingsOverlay.visibility == View.VISIBLE) {
             toggleSettingsOverlay(false)
         } else if (binding.webView.canGoBack()) {
@@ -1906,6 +2526,12 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         recoveryHandler.removeCallbacks(recoveryRunnable)
+        if (::subnetScanner.isInitialized) {
+            subnetScanner.stopScan()
+        }
+        if (::roamingManager.isInitialized) {
+            roamingManager.stopNetworkMonitoring()
+        }
     }
 
     /**
@@ -1929,6 +2555,9 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun getDeviceInfo(): String {
+            // Determine if this device is a phone (screen width < 600dp indicates phone)
+            val config = context.resources.configuration
+            val isPhone = config.screenWidthDp < 600
             return JSONObject().apply {
                 put("model", Build.MODEL)
                 put("manufacturer", Build.MANUFACTURER)
@@ -1936,6 +2565,7 @@ class MainActivity : AppCompatActivity() {
                 put("appVersion", getAppVersion())
                 put("isKioskMode", isKioskMode)
                 put("platform", "android")
+                put("isPhone", isPhone)
             }.toString()
         }
 
@@ -1946,9 +2576,9 @@ class MainActivity : AppCompatActivity() {
         fun getAppVersion(): String {
             return try {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                packageInfo.versionName ?: "2.1.0-OTA"
+                packageInfo.versionName ?: "2.2.4"
             } catch (e: Exception) {
-                "2.1.0-OTA"
+                "2.2.4"
             }
         }
 
@@ -1966,17 +2596,24 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun getPushToken(): String {
-            var token = ""
+            // Read saved FCM or HMS push token from SharedPreferences (set by AuraFcmService / AuraHmsService onNewToken)
+            val fcmToken = sharedPreferences.getString("fcm_push_token", "") ?: ""
+            if (fcmToken.isNotEmpty()) return fcmToken
+            val hmsToken = sharedPreferences.getString("hms_push_token", "") ?: ""
+            if (hmsToken.isNotEmpty()) return hmsToken
+            // Fallback: try to request a fresh FCM token (fire-and-forget; will be available on next call)
             try {
                 FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                     if (task.isSuccessful) {
-                        token = task.result
+                        val newToken = task.result
+                        sharedPreferences.edit().putString("fcm_push_token", newToken).apply()
+                        Log.i("AuraJSBridge", "FCM token refreshed and saved.")
                     }
                 }
             } catch (e: Exception) {
-                Log.e("AuraJSBridge", "Failed to retrieve FCM token: ${e.message}")
+                Log.e("AuraJSBridge", "Failed to request FCM token: ${e.message}")
             }
-            return token
+            return ""
         }
 
         /**
@@ -2013,6 +2650,97 @@ class MainActivity : AppCompatActivity() {
             orchestrator.cancelNotification(alertId)
         }
 
+        /**
+         * Automatically synchronizes external WAN URL from the Pro dashboard into Android's active instance config.
+         */
+        @JavascriptInterface
+        fun syncServerConfig(wanUrlStr: String) {
+            if (wanUrlStr.isNullOrBlank()) return
+            val trimmedWan = wanUrlStr.trim()
+            runOnUiThread {
+                try {
+                    val activeId = getActiveInstanceId()
+                    val currentInstances = getInstances()
+                    val inst = currentInstances.find { it.id == activeId }
+                    if (inst != null && inst.wanUrl != trimmedWan) {
+                        updateInstanceWanUrl(activeId, trimmedWan)
+                        wanUrl = trimmedWan
+                        Log.i("AuraJSBridge", "Synced WAN URL from server into active instance: $trimmedWan")
+                    } else if (currentInstances.isEmpty() && wanUrl != trimmedWan) {
+                        wanUrl = trimmedWan
+                        sharedPreferences.edit().putString("server_wan_url", trimmedWan).apply()
+                        Log.i("AuraJSBridge", "Synced WAN URL from server into legacy preferences: $trimmedWan")
+                    }
+                } catch (e: Exception) {
+                    Log.e("AuraJSBridge", "Failed to sync WAN URL: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Request background silent re-authentication from native when frontend encounters 401.
+         * Resolves via window.__auraCallbacks without triggering disruptive full page reloads.
+         */
+        @JavascriptInterface
+        fun requestSilentReAuth(callbackId: String) {
+            Log.i("AuraJSBridge", "Received requestSilentReAuth. Attempting background token auto-refresh... (cbId: $callbackId)")
+            executor.execute {
+                val refreshed = refreshActiveTokenSync()
+                if (refreshed) {
+                    val newActiveId = getActiveInstanceId()
+                    val newToken = sharedPreferences.getString("auth_token_$newActiveId", "") ?: ""
+                    val newUser = sharedPreferences.getString("auth_user", "admin") ?: "admin"
+                    val userObj = org.json.JSONObject().apply { put("username", newUser) }.toString()
+
+                    val jsScript = """
+                        (function() {
+                            try {
+                                localStorage.setItem('auth_token', '$newToken');
+                                localStorage.setItem('auth_user', '$userObj');
+                                console.log('[AuraGrid-Android] Background silent re-auth succeeded and injected.');
+                                if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                                    window.__auraCallbacks['$callbackId']({ success: true, token: '$newToken' });
+                                }
+                            } catch(e) {
+                                console.error('[AuraGrid-Android] Token auto-refresh injection failed:', e);
+                                if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                                    window.__auraCallbacks['$callbackId']({ success: false, reason: e.toString() });
+                                }
+                            }
+                        })();
+                    """.trimIndent()
+
+                    runOnUiThread {
+                        binding.webView.evaluateJavascript(jsScript, null)
+                    }
+                } else {
+                    Log.w("AuraJSBridge", "Background auto-login failed or credentials unavailable.")
+                    val jsScript = """
+                        (function() {
+                            if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                                window.__auraCallbacks['$callbackId']({ success: false, reason: 'auto_login_failed' });
+                            }
+                        })();
+                    """.trimIndent()
+                    runOnUiThread {
+                        binding.webView.evaluateJavascript(jsScript, null)
+                    }
+                }
+            }
+        }
+
+        /**
+         * Clear stored auth token for active instance.
+         */
+        @JavascriptInterface
+        fun clearStoredToken() {
+            Log.i("AuraJSBridge", "Received clearStoredToken.")
+            val activeId = getActiveInstanceId()
+            if (activeId.isNotEmpty()) {
+                sharedPreferences.edit().remove("auth_token_$activeId").apply()
+            }
+        }
+
         private fun sha256(base: String): String {
             return try {
                 val digest = MessageDigest.getInstance("SHA-256")
@@ -2022,5 +2750,900 @@ class MainActivity : AppCompatActivity() {
                 base
             }
         }
+    }
+
+    // =========================================================================
+    // Multi-instance (Multi-node) Helpers & SharedPreferences Serializer
+    // =========================================================================
+
+    data class AuraGridInstance(
+        val id: String,
+        val name: String,
+        val lanUrl: String,
+        val wanUrl: String,
+        val username: String
+    )
+
+    private fun getInstances(): List<AuraGridInstance> {
+        val json = sharedPreferences.getString("instances_json", null) ?: return emptyList()
+        return try {
+            val array = org.json.JSONArray(json)
+            val list = mutableListOf<AuraGridInstance>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(AuraGridInstance(
+                    obj.getString("id"),
+                    obj.getString("name"),
+                    obj.getString("lanUrl"),
+                    obj.getString("wanUrl"),
+                    obj.getString("username")
+                ))
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveInstances(list: List<AuraGridInstance>) {
+        try {
+            val array = org.json.JSONArray()
+            for (inst in list) {
+                val obj = org.json.JSONObject()
+                obj.put("id", inst.id)
+                obj.put("name", inst.name)
+                obj.put("lanUrl", inst.lanUrl)
+                obj.put("wanUrl", inst.wanUrl)
+                obj.put("username", inst.username)
+                array.put(obj)
+            }
+            sharedPreferences.edit().putString("instances_json", array.toString()).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun updateInstanceWanUrl(targetId: String, newWanUrl: String) {
+        val current = getInstances()
+        val index = current.indexOfFirst { it.id == targetId }
+        if (index != -1) {
+            val updated = current.toMutableList()
+            updated[index] = updated[index].copy(wanUrl = newWanUrl)
+            saveInstances(updated)
+        }
+    }
+
+    private fun getActiveInstanceId(): String {
+        return sharedPreferences.getString("active_instance_id", "") ?: ""
+    }
+
+    private fun setActiveInstanceId(id: String) {
+        sharedPreferences.edit().putString("active_instance_id", id).apply()
+    }
+
+    private fun migrateLegacyConfigIfNeeded() {
+        val legacyLan = sharedPreferences.getString("server_lan_url", "") ?: ""
+        val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+        val hasInstances = sharedPreferences.contains("instances_json")
+
+        if (isConfigured && legacyLan.isNotEmpty() && !hasInstances) {
+            Log.i("MainActivity", "Legacy single-instance profile detected. Migrating to new multi-node collection...")
+            val newId = java.util.UUID.randomUUID().toString()
+            val name = when (tempSelectedLang) {
+                "zh-rTW", "zh-TW" -> "我的家"
+                "zh" -> "我的家"
+                else -> "My Home"
+            }
+            val legacyWan = sharedPreferences.getString("server_wan_url", "") ?: ""
+            val legacyUser = sharedPreferences.getString("auth_user", "") ?: ""
+            val legacyPass = sharedPreferences.getString("auth_pass", "") ?: ""
+            val legacyToken = sharedPreferences.getString("auth_token", "") ?: ""
+
+            // Wrap in instance entity
+            val defaultInstance = AuraGridInstance(
+                id = newId,
+                name = name,
+                lanUrl = legacyLan,
+                wanUrl = legacyWan,
+                username = legacyUser
+            )
+
+            // Save token and pass credentials securely dynamically
+            sharedPreferences.edit().apply {
+                putString("auth_token_$newId", legacyToken)
+                putString("auth_pass_$newId", legacyPass)
+                apply()
+            }
+
+            // Save instances array and set active
+            saveInstances(listOf(defaultInstance))
+            setActiveInstanceId(newId)
+
+            // Remove legacy keys to prevent recurrent migrations
+            sharedPreferences.edit().apply {
+                remove("server_lan_url")
+                remove("server_wan_url")
+                remove("auth_user")
+                remove("auth_pass")
+                remove("auth_token")
+                apply()
+            }
+            Log.i("MainActivity", "Legacy config migration successful. Active node ID: $newId")
+        }
+    }
+
+    private fun renderInstancesList() {
+        binding.instancesListContainer.removeAllViews()
+        val instances = getInstances()
+        val activeId = getActiveInstanceId()
+
+        for (inst in instances) {
+            val view = layoutInflater.inflate(R.layout.item_instance_row, binding.instancesListContainer, false)
+            
+            val layoutInstanceCard = view.findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.layoutInstanceCard)
+            val viewAccentBar = view.findViewById<View>(R.id.viewAccentBar)
+            val imgActiveDot = view.findViewById<android.widget.ImageView>(R.id.imgActiveDot)
+            val txtInstanceName = view.findViewById<android.widget.TextView>(R.id.txtInstanceName)
+            val txtInstanceStatus = view.findViewById<android.widget.TextView>(R.id.txtInstanceStatus)
+            val txtInstanceLanUrl = view.findViewById<android.widget.TextView>(R.id.txtInstanceLanUrl)
+            val txtInstanceDotWan = view.findViewById<android.widget.TextView>(R.id.txtInstanceDotWan)
+            val txtInstanceWanUrl = view.findViewById<android.widget.TextView>(R.id.txtInstanceWanUrl)
+            val btnSwitchInstance = view.findViewById<android.widget.TextView>(R.id.btnSwitchInstance)
+            val btnEditInstance = view.findViewById<android.widget.ImageView>(R.id.btnEditInstance)
+            val btnDeleteInstance = view.findViewById<android.widget.ImageView>(R.id.btnDeleteInstance)
+
+            val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+
+            txtInstanceName.text = inst.name
+            txtInstanceLanUrl.text = inst.lanUrl
+
+            if (inst.wanUrl.isNotBlank()) {
+                txtInstanceDotWan.visibility = View.VISIBLE
+                txtInstanceWanUrl.visibility = View.VISIBLE
+                txtInstanceWanUrl.text = inst.wanUrl
+            } else {
+                txtInstanceDotWan.visibility = View.GONE
+                txtInstanceWanUrl.visibility = View.GONE
+            }
+
+            val isActive = inst.id == activeId
+
+            if (isActive) {
+                viewAccentBar.visibility = View.VISIBLE
+                imgActiveDot.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E5FF"))
+                
+                txtInstanceStatus.visibility = View.VISIBLE
+                txtInstanceStatus.text = res.getString(R.string.active_badge)
+                
+                btnSwitchInstance.visibility = View.GONE
+                
+                // Active instance background: neon_teal (6% opacity -> #0F00E5FF) with thin border
+                val activeBg = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor("#0F00E5FF"))
+                    setStroke(2, Color.parseColor("#00E5FF"))
+                    cornerRadius = 12f * resources.displayMetrics.density
+                }
+                layoutInstanceCard.background = activeBg
+            } else {
+                viewAccentBar.visibility = View.GONE
+                imgActiveDot.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#8E8E93"))
+                txtInstanceStatus.visibility = View.GONE
+                btnSwitchInstance.visibility = View.VISIBLE
+                btnSwitchInstance.text = res.getString(R.string.switch_node_btn)
+                
+                // Normal instance background: subtle border
+                val normalBg = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor("#0DFFFFFF"))
+                    setStroke(1, Color.parseColor("#1AFFFFFF"))
+                    cornerRadius = 12f * resources.displayMetrics.density
+                }
+                layoutInstanceCard.background = normalBg
+            }
+
+            btnSwitchInstance.setOnClickListener {
+                switchActiveInstance(inst)
+            }
+
+            btnEditInstance.setOnClickListener {
+                editingInstanceId = inst.id
+                binding.inputInstanceName.setText(inst.name)
+                binding.inputLanUrl.setText(inst.lanUrl)
+                binding.inputWanUrl.setText(inst.wanUrl)
+                binding.inputUsername.setText(inst.username)
+                val savedPass = sharedPreferences.getString("auth_pass_${inst.id}", "") ?: ""
+                binding.inputPassword.setText(savedPass)
+                showPanel(isAddPanel = true, isEditing = true)
+            }
+
+            if (instances.size > 1) {
+                btnDeleteInstance.visibility = View.VISIBLE
+                btnDeleteInstance.setOnClickListener {
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle(res.getString(R.string.delete_node_confirm_title))
+                        .setMessage(res.getString(R.string.delete_node_confirm_desc, inst.name))
+                        .setPositiveButton(res.getString(R.string.delete_node_btn)) { _, _ ->
+                            deleteInstance(inst)
+                        }
+                        .setNegativeButton(res.getString(R.string.cancel), null)
+                        .show()
+                }
+            } else {
+                btnDeleteInstance.visibility = View.GONE
+            }
+
+            binding.instancesListContainer.addView(view)
+        }
+    }
+
+    private fun refreshActiveTokenSync(): Boolean {
+        val activeId = getActiveInstanceId()
+        if (activeId.isEmpty()) return false
+        val instances = getInstances()
+        val activeInst = instances.find { it.id == activeId } ?: return false
+        val savedPass = sharedPreferences.getString("auth_pass_${activeInst.id}", "") ?: ""
+        if (savedPass.isEmpty()) return false
+
+        val routes = listOfNotNull(
+            activeInst.lanUrl.takeIf { it.isNotBlank() },
+            activeInst.wanUrl.takeIf { it.isNotBlank() }
+        )
+
+        for (route in routes) {
+            val authResult = performLoginRequest(route, activeInst.username, savedPass)
+            if (authResult != null && authResult.token.isNotEmpty()) {
+                val editor = sharedPreferences.edit()
+                editor.putString("auth_token_${activeInst.id}", authResult.token)
+                if (authResult.userJson.isNotEmpty()) {
+                    editor.putString("auth_user_${activeInst.id}", authResult.userJson)
+                }
+                editor.apply()
+
+                val extUrl = authResult.externalUrl
+                if (activeInst.wanUrl.isBlank() && !extUrl.isNullOrBlank()) {
+                    updateInstanceWanUrl(activeInst.id, extUrl)
+                }
+
+                Log.i("MainActivity", "Background auto-login succeeded for instance ${activeInst.id}")
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun switchActiveInstance(inst: AuraGridInstance) {
+        setActiveInstanceId(inst.id)
+        toggleSettingsOverlay(false)
+        clearAppCacheAndWebView(this)
+        recreate()
+    }
+
+    private fun deleteInstance(inst: AuraGridInstance) {
+        val list = getInstances().toMutableList()
+        list.removeAll { it.id == inst.id }
+        saveInstances(list)
+        
+        sharedPreferences.edit().apply {
+            remove("auth_pass_${inst.id}")
+            remove("auth_token_${inst.id}")
+            apply()
+        }
+
+        val activeId = getActiveInstanceId()
+        if (activeId == inst.id) {
+            if (list.isNotEmpty()) {
+                setActiveInstanceId(list[0].id)
+            } else {
+                setActiveInstanceId("")
+            }
+            clearAppCacheAndWebView(this)
+            recreate()
+        } else {
+            renderInstancesList()
+        }
+    }
+
+    private fun showPanel(isAddPanel: Boolean, isEditing: Boolean = false) {
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        if (isAddPanel) {
+            binding.layoutInstancesList.visibility = View.GONE
+            binding.layoutAddInstanceForm.visibility = View.VISIBLE
+            
+            if (!isEditing) {
+                // Clear inputs for clean form entry in Add Mode
+                binding.inputInstanceName.setText("")
+                binding.inputLanUrl.setText("")
+                binding.inputWanUrl.setText("")
+                binding.inputUsername.setText("admin")
+                binding.inputPassword.setText("")
+                binding.btnSaveSettings.text = res.getString(R.string.btn_verify_add)
+
+                // Clear previous discovery results and automatically start background scan
+                binding.layoutDiscoveredHosts.visibility = View.GONE
+                binding.containerDiscoveredCards.removeAllViews()
+                triggerSubnetScan()
+            } else {
+                // In Edit Mode, keep populated inputs and show Save Changes
+                binding.btnSaveSettings.text = res.getString(R.string.btn_save_changes)
+                binding.layoutDiscoveredHosts.visibility = View.GONE
+                binding.containerDiscoveredCards.removeAllViews()
+            }
+            
+            // Show verification status clean
+            binding.txtVerificationStatus.visibility = View.GONE
+            binding.btnSaveSettings.visibility = View.VISIBLE
+            binding.btnCancelSettings.text = res.getString(R.string.cancel)
+        } else {
+            if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
+                subnetScanner.stopScan()
+            }
+            binding.layoutDiscoveredHosts.visibility = View.GONE
+            binding.containerDiscoveredCards.removeAllViews()
+            binding.btnAutoDiscoverLan.text = res.getString(R.string.auto_discover_hub)
+
+            binding.layoutInstancesList.visibility = View.VISIBLE
+            binding.layoutAddInstanceForm.visibility = View.GONE
+            
+            binding.txtVerificationStatus.visibility = View.GONE
+            binding.btnSaveSettings.visibility = View.GONE
+            
+            // Cancel acts as "Close" in list mode
+            binding.btnCancelSettings.text = when (tempSelectedLang) {
+                "zh-rTW", "zh-TW" -> "關閉"
+                "zh" -> "关闭"
+                else -> "CLOSE"
+            }
+            
+            renderInstancesList()
+        }
+    }
+
+    /**
+     * Triggers concurrent LAN subnet scan and updates UI cards in real time.
+     */
+    private fun triggerSubnetScan() {
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
+            subnetScanner.stopScan()
+            binding.layoutDiscoveredHosts.visibility = View.GONE
+            binding.btnAutoDiscoverLan.text = res.getString(R.string.auto_discover_hub)
+            return
+        }
+
+        binding.layoutDiscoveredHosts.visibility = View.VISIBLE
+        binding.containerDiscoveredCards.removeAllViews()
+        binding.txtDiscoveryStatus.text = res.getString(R.string.scanning_lan)
+        binding.btnAutoDiscoverLan.text = res.getString(R.string.cancel)
+
+        subnetScanner.startScan(object : SubnetScanner.ScanCallback {
+            override fun onHostDiscovered(host: DiscoveredHost) {
+                runOnUiThread {
+                    addDiscoveredHostCard(host)
+                }
+            }
+
+            override fun onScanProgress(current: Int, total: Int) {
+                runOnUiThread {
+                    val percent = (current * 100) / total
+                    binding.txtDiscoveryStatus.text = "${res.getString(R.string.scanning_lan)} ($percent%)"
+                }
+            }
+
+            override fun onScanCompleted(candidates: List<DiscoveredHost>) {
+                runOnUiThread {
+                    binding.btnAutoDiscoverLan.text = res.getString(R.string.auto_discover_hub)
+                    if (candidates.isEmpty()) {
+                        binding.txtDiscoveryStatus.text = res.getString(R.string.no_hub_found)
+                    } else {
+                        binding.txtDiscoveryStatus.text = "${res.getString(R.string.discovered_hubs_hint)} (${candidates.size})"
+                    }
+                }
+            }
+        })
+    }
+
+    /**
+     * Inflates and binds a discovered host result card for one-tap auto-filling.
+     */
+    private fun addDiscoveredHostCard(host: DiscoveredHost) {
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        val cardView = layoutInflater.inflate(R.layout.item_discovered_host, binding.containerDiscoveredCards, false)
+        cardView.findViewById<TextView>(R.id.txtHostTitle).text = res.getString(R.string.hub_discovered)
+        cardView.findViewById<TextView>(R.id.txtHostAddress).text = host.displayAddress
+        cardView.findViewById<TextView>(R.id.txtHostLatency).text = "${host.latencyMs}ms"
+
+        cardView.setOnClickListener {
+            binding.inputLanUrl.setText(host.url)
+            if (binding.inputInstanceName.text.isNullOrEmpty()) {
+                val defaultName = if (tempSelectedLang.startsWith("zh")) "Aura Grid 智能中枢" else "Aura Grid Home"
+                binding.inputInstanceName.setText(defaultName)
+            }
+            Toast.makeText(this@MainActivity, "${res.getString(R.string.hub_discovered)}: ${host.displayAddress}", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.containerDiscoveredCards.addView(cardView)
+    }
+
+    private fun resetWipeButtonState() {
+        isConfirmingWipe = false
+        val res = getLocalizedResources(this@MainActivity, tempSelectedLang)
+        binding.btnWipeData.text = res.getString(R.string.wipe_data_btn)
+        binding.btnWipeData.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+        binding.btnWipeData.setTextColor(Color.parseColor("#FF3333"))
+    }
+
+    private fun executeWipeData() {
+        sharedPreferences.edit().clear().apply()
+        try {
+            stopService(Intent(this, AuraSocketService::class.java))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        clearAppCacheAndWebView(this)
+        recreate()
+    }
+
+    // =========================================================================
+    // 4-Step Onboarding Wizard & Official Sandbox Engine
+    // =========================================================================
+
+    data class OnboardingSlide(val imageRes: Int, val titleRes: Int, val descRes: Int)
+
+    private var onboardingConnectView: View? = null
+    private val discoveredCandidateHosts = mutableListOf<DiscoveredHost>()
+
+    private fun showOnboardingWizard() {
+        binding.onboardingOverlayLayout.onboardingOverlay.visibility = View.VISIBLE
+        binding.onboardingOverlayLayout.onboardingOverlay.alpha = 1f
+
+        binding.onboardingOverlayLayout.onboardingViewPager.adapter = OnboardingAdapter { connectView ->
+            onboardingConnectView = connectView
+            setupOnboardingConnectPage(connectView)
+        }
+
+        binding.onboardingOverlayLayout.onboardingViewPager.registerOnPageChangeCallback(object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                updateOnboardingIndicators(position)
+                val isLastPage = position == 3
+                val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+                binding.onboardingOverlayLayout.btnOnboardingNext.text = if (isLastPage) {
+                    if (isZh) "手动配置服务器" else "Manual Configure"
+                } else {
+                    if (isZh) "下一步" else "Next"
+                }
+            }
+        })
+
+        binding.onboardingOverlayLayout.btnOnboardingNext.setOnClickListener {
+            val current = binding.onboardingOverlayLayout.onboardingViewPager.currentItem
+            if (current < 3) {
+                binding.onboardingOverlayLayout.btnOnboardingNext.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                binding.onboardingOverlayLayout.onboardingViewPager.currentItem = current + 1
+            } else {
+                binding.onboardingOverlayLayout.btnOnboardingNext.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                hideOnboardingWizard()
+                toggleSettingsOverlay(true)
+            }
+        }
+
+        setupOnboardingLangButtons()
+        updateOnboardingIndicators(0)
+        startOnboardingSubnetScan()
+    }
+
+    private fun hideOnboardingWizard() {
+        binding.onboardingOverlayLayout.onboardingOverlay.visibility = View.GONE
+        if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
+            subnetScanner.stopScan()
+        }
+    }
+
+    private fun updateOnboardingIndicators(position: Int) {
+        val dots = listOf(
+            binding.onboardingOverlayLayout.indicatorDot0,
+            binding.onboardingOverlayLayout.indicatorDot1,
+            binding.onboardingOverlayLayout.indicatorDot2,
+            binding.onboardingOverlayLayout.indicatorDot3
+        )
+        val density = resources.displayMetrics.density
+        for (i in dots.indices) {
+            val dot = dots[i]
+            val params = dot.layoutParams
+            if (i == position) {
+                params.width = (20 * density).toInt()
+                dot.setBackgroundResource(R.drawable.bg_onboarding_capsule_active)
+            } else {
+                params.width = (6 * density).toInt()
+                dot.setBackgroundResource(R.drawable.bg_onboarding_capsule_inactive)
+            }
+            dot.layoutParams = params
+        }
+    }
+
+    private fun setupOnboardingLangButtons() {
+        val isZh = tempSelectedLang == "zh"
+        val isZhTw = tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+        val isEn = tempSelectedLang == "en"
+
+        fun updateToggleStyles(zh: Boolean, tw: Boolean, en: Boolean) {
+            binding.onboardingOverlayLayout.btnOnboardingLangZh.apply {
+                setBackgroundColor(if (zh) Color.parseColor("#00FFC2") else Color.TRANSPARENT)
+                setTextColor(if (zh) Color.BLACK else Color.parseColor("#8E8E93"))
+            }
+            binding.onboardingOverlayLayout.btnOnboardingLangZhTw.apply {
+                setBackgroundColor(if (tw) Color.parseColor("#00FFC2") else Color.TRANSPARENT)
+                setTextColor(if (tw) Color.BLACK else Color.parseColor("#8E8E93"))
+            }
+            binding.onboardingOverlayLayout.btnOnboardingLangEn.apply {
+                setBackgroundColor(if (en) Color.parseColor("#00FFC2") else Color.TRANSPARENT)
+                setTextColor(if (en) Color.BLACK else Color.parseColor("#8E8E93"))
+            }
+        }
+        updateToggleStyles(isZh, isZhTw, isEn)
+
+        binding.onboardingOverlayLayout.btnOnboardingLangZh.setOnClickListener {
+            tempSelectedLang = "zh"
+            sharedPreferences.edit().putString("app_language", "zh").apply()
+            setAppLocale(this, "zh")
+            recreate()
+        }
+        binding.onboardingOverlayLayout.btnOnboardingLangZhTw.setOnClickListener {
+            tempSelectedLang = "zh-rTW"
+            sharedPreferences.edit().putString("app_language", "zh-rTW").apply()
+            setAppLocale(this, "zh-rTW")
+            recreate()
+        }
+        binding.onboardingOverlayLayout.btnOnboardingLangEn.setOnClickListener {
+            tempSelectedLang = "en"
+            sharedPreferences.edit().putString("app_language", "en").apply()
+            setAppLocale(this, "en")
+            recreate()
+        }
+    }
+
+    private fun startOnboardingSubnetScan() {
+        discoveredCandidateHosts.clear()
+        
+        // Start radar pulsing icon animation
+        onboardingConnectView?.let { view ->
+            val radarIcon = view.findViewById<ImageView>(R.id.imgRadarIcon)
+            radarIcon?.animate()?.alpha(0.4f)?.setDuration(600)?.withEndAction {
+                radarIcon.animate().alpha(1.0f).setDuration(600).start()
+            }?.start()
+        }
+
+        subnetScanner.startScan(object : SubnetScanner.ScanCallback {
+            override fun onHostDiscovered(host: DiscoveredHost) {
+                runOnUiThread {
+                    val existingHosts = getInstances().mapNotNull { runCatching { Uri.parse(it.lanUrl).host }.getOrNull() }
+                    val hostUri = runCatching { Uri.parse(host.url) }.getOrNull()
+                    val hostAddress = hostUri?.host ?: host.displayAddress
+                    if (!existingHosts.contains(hostAddress) && !discoveredCandidateHosts.any { it.url == host.url }) {
+                        discoveredCandidateHosts.add(host)
+                        onboardingConnectView?.let { renderOnboardingDiscoveredHosts(it) }
+                    }
+                }
+            }
+
+            override fun onScanProgress(current: Int, total: Int) {
+                runOnUiThread {
+                    onboardingConnectView?.let { view ->
+                        val radarIcon = view.findViewById<ImageView>(R.id.imgRadarIcon)
+                        radarIcon?.rotation = (radarIcon?.rotation ?: 0f) + 15f
+                    }
+                }
+            }
+
+            override fun onScanCompleted(candidates: List<DiscoveredHost>) {
+                runOnUiThread {
+                    onboardingConnectView?.let { view ->
+                        view.findViewById<ProgressBar>(R.id.progressConnectScanning)?.visibility = View.GONE
+                        val radarIcon = view.findViewById<ImageView>(R.id.imgRadarIcon)
+                        radarIcon?.animate()?.cancel()
+                        radarIcon?.alpha = 1.0f
+                        radarIcon?.rotation = 0f
+                        val statusText = view.findViewById<TextView>(R.id.txtConnectStatus)
+                        val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+                        if (discoveredCandidateHosts.isEmpty()) {
+                            statusText?.text = if (isZh) "未在当前 Wi-Fi 发现可用中枢，请检查网络或手动配置" else "No hubs discovered. Check Wi-Fi or configure manually."
+                        } else {
+                            statusText?.text = if (isZh) "已在当前网络发现 ${discoveredCandidateHosts.size} 台中枢（点击直连）：" else "Found ${discoveredCandidateHosts.size} hubs on network (tap to connect):"
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    private fun renderOnboardingDiscoveredHosts(connectView: View) {
+        val container = connectView.findViewById<LinearLayout>(R.id.containerOnboardingDiscovered) ?: return
+        container.removeAllViews()
+
+        for (host in discoveredCandidateHosts) {
+            val card = layoutInflater.inflate(R.layout.item_discovered_host, container, false)
+            card.findViewById<TextView>(R.id.txtHostTitle)?.text = if (tempSelectedLang.startsWith("zh")) "Aura Grid 智能中枢" else "Aura Grid Home"
+            card.findViewById<TextView>(R.id.txtHostAddress)?.text = host.displayAddress
+            card.findViewById<TextView>(R.id.txtHostLatency)?.text = "${host.latencyMs}ms"
+
+            card.setOnClickListener {
+                card.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                hideOnboardingWizard()
+                toggleSettingsOverlay(true)
+                showPanel(isAddPanel = true)
+                binding.inputLanUrl.setText(host.url)
+                val defaultName = if (tempSelectedLang.startsWith("zh")) "我的家" else "My Home"
+                binding.inputInstanceName.setText(defaultName)
+            }
+            container.addView(card)
+        }
+    }
+
+    private fun setupOnboardingConnectPage(connectView: View) {
+        renderOnboardingDiscoveredHosts(connectView)
+
+        connectView.findViewById<View>(R.id.cardExploreDemo)?.setOnClickListener {
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            connectToOfficialDemo()
+        }
+
+        connectView.findViewById<View>(R.id.btnOnboardingManualConnect)?.setOnClickListener {
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            hideOnboardingWizard()
+            toggleSettingsOverlay(true)
+        }
+    }
+
+    private fun connectToOfficialDemo() {
+        val isZh = tempSelectedLang == "zh" || tempSelectedLang == "zh-rTW" || tempSelectedLang == "zh-TW"
+        Toast.makeText(this, if (isZh) "正在连接官方演示沙盒..." else "Connecting to official demo sandbox...", Toast.LENGTH_SHORT).show()
+        executor.execute {
+            var token: String? = null
+            var errorMsg: String? = null
+            try {
+                val authURL = URL("https://demo2.iaura.cn/api/v1/auth/login")
+                val connection = authURL.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.5 (Android; Mobile)")
+                connection.connectTimeout = 6000
+                connection.readTimeout = 6000
+                connection.doOutput = true
+
+                val jsonInputString = "{\"username\": \"admin\", \"password\": \"123456\"}"
+                connection.outputStream.use { os ->
+                    val input = jsonInputString.toByteArray(charset("utf-8"))
+                    os.write(input, 0, input.size)
+                }
+
+                val code = connection.responseCode
+                if (code == 200 || code == 201) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = JSONObject(response)
+                    if (jsonObject.has("access_token")) {
+                        token = jsonObject.getString("access_token")
+                    }
+                } else {
+                    errorMsg = "HTTP $code"
+                }
+            } catch (e: Exception) {
+                errorMsg = e.localizedMessage
+            }
+
+            val finalToken = token
+            val finalError = errorMsg
+            runOnUiThread {
+                if (finalToken != null) {
+                    val demoInstanceId = "demo-sandbox-node"
+                    sharedPreferences.edit().apply {
+                        putBoolean("is_demo_mode", true)
+                        putBoolean("is_configured", true)
+                        putString("server_lan_url", "https://demo2.iaura.cn")
+                        putString("server_wan_url", "https://demo2.iaura.cn")
+                        putString("auth_user", "admin")
+                        putString("auth_token", finalToken)
+                        putString("auth_token_$demoInstanceId", finalToken)
+                        apply()
+                    }
+                    val demoInstance = AuraGridInstance(
+                        id = demoInstanceId,
+                        name = if (isZh) "官方演示沙盒" else "Official Demo Sandbox",
+                        lanUrl = "https://demo2.iaura.cn",
+                        wanUrl = "https://demo2.iaura.cn",
+                        username = "admin"
+                    )
+                    saveInstances(listOf(demoInstance))
+                    setActiveInstanceId(demoInstanceId)
+
+                    hideOnboardingWizard()
+                    toggleSettingsOverlay(false)
+                    loadSavedConfig()
+                    startAuraServices()
+                    routeAndLoadUrl()
+
+                    Toast.makeText(this, if (isZh) "已进入官方演示系统" else "Connected to official demo", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Demo login failed: $finalError", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun executeFactoryResetAndShowOnboarding() {
+        sharedPreferences.edit().apply {
+            putBoolean("is_demo_mode", false)
+            putBoolean("is_configured", false)
+            remove("instances_json")
+            remove("active_instance_id")
+            remove("server_lan_url")
+            remove("server_wan_url")
+            remove("auth_token")
+            remove("auth_user")
+            remove("auth_pass")
+            apply()
+        }
+        binding.webView.clearCache(true)
+        binding.webView.clearFormData()
+        binding.webView.clearHistory()
+        android.webkit.CookieManager.getInstance().removeAllCookies(null)
+
+        toggleSettingsOverlay(false)
+        loadSavedConfig()
+        showOnboardingWizard()
+    }
+
+    inner class OnboardingAdapter(
+        private val onConnectBound: (View) -> Unit
+    ) : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+
+        private val TYPE_SLIDE = 0
+        private val TYPE_CONNECT = 1
+
+        private val slides = listOf(
+            OnboardingSlide(R.drawable.ob_hero_digital_twin, R.string.ob_welcome_title, R.string.ob_welcome_subtitle),
+            OnboardingSlide(R.drawable.ob_local_radar_shield, R.string.ob_feature2_title, R.string.ob_feature2_desc),
+            OnboardingSlide(R.drawable.ob_dual_roaming_rings, R.string.ob_feature3_title, R.string.ob_feature3_desc)
+        )
+
+        override fun getItemCount(): Int = 4
+
+        override fun getItemViewType(position: Int): Int = if (position < 3) TYPE_SLIDE else TYPE_CONNECT
+
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
+            return if (viewType == TYPE_SLIDE) {
+                val view = layoutInflater.inflate(R.layout.item_onboarding_slide, parent, false)
+                SlideViewHolder(view)
+            } else {
+                val view = layoutInflater.inflate(R.layout.item_onboarding_connect, parent, false)
+                ConnectViewHolder(view)
+            }
+        }
+
+        override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
+            if (holder is SlideViewHolder && position < slides.size) {
+                val data = slides[position]
+                holder.imgHero.setImageResource(data.imageRes)
+                holder.txtTitle.setText(data.titleRes)
+                holder.txtDesc.setText(data.descRes)
+            } else if (holder is ConnectViewHolder) {
+                onConnectBound(holder.itemView)
+            }
+        }
+
+        inner class SlideViewHolder(view: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view) {
+            val imgHero: ImageView = view.findViewById(R.id.imgSlideHero)
+            val txtTitle: TextView = view.findViewById(R.id.txtSlideTitle)
+            val txtDesc: TextView = view.findViewById(R.id.txtSlideSubtitle)
+        }
+
+        inner class ConnectViewHolder(view: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view)
+    }
+
+    // ==========================================
+    // 🛡️ Biometric Security Vault (Companion Mode)
+    // ==========================================
+
+    /**
+     * Inspects security policy when the app resumes from background.
+     * In Companion mode with biometric security enabled, presents biometric auth
+     * before revealing the home digital twin canvas.
+     */
+    private fun checkBiometricSecurityOnResume() {
+        val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+        if (isKioskMode || !isBiometricEnabled || !isConfigured || isBiometricUnlocked) {
+            return
+        }
+
+        // Display lock screen overlay
+        val lockLayout = binding.biometricLockOverlayLayout.overlayBiometricLock
+        lockLayout.visibility = View.VISIBLE
+        lockLayout.alpha = 1f
+
+        val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
+        hint.visibility = View.GONE
+
+        binding.biometricLockOverlayLayout.btnTriggerUnlock.setOnClickListener {
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            showBiometricPrompt()
+        }
+
+        // Automatically trigger biometric prompt
+        showBiometricPrompt()
+    }
+
+    /**
+     * Launches Android BiometricPrompt with biometric or device credential fallback.
+     */
+    private fun showBiometricPrompt() {
+        val biometricManager = BiometricManager.from(this)
+        val canAuth = biometricManager.canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or 
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or 
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+
+        if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
+            Log.w("MainActivity", "Biometric authentication unavailable on this device (code: $canAuth)")
+            val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
+            hint.text = getString(R.string.biometric_not_available)
+            hint.visibility = View.VISIBLE
+            // Allow manual bypass if device has no biometric hardware enrolled
+            binding.biometricLockOverlayLayout.btnTriggerUnlock.text = getString(R.string.biometric_use_password)
+            binding.biometricLockOverlayLayout.btnTriggerUnlock.setOnClickListener {
+                unlockBiometricVault()
+            }
+            return
+        }
+
+        val executor = ContextCompat.getMainExecutor(this)
+        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                Log.i("MainActivity", "Biometric authentication succeeded.")
+                unlockBiometricVault()
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                Log.w("MainActivity", "Biometric authentication error ($errorCode): $errString")
+                val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
+                hint.text = "$errString"
+                hint.visibility = View.VISIBLE
+            }
+
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                Log.w("MainActivity", "Biometric authentication failed.")
+                val hint = binding.biometricLockOverlayLayout.txtBiometricStatusHint
+                hint.text = getString(R.string.biometric_failed)
+                hint.visibility = View.VISIBLE
+            }
+        })
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(getString(R.string.biometric_prompt_title))
+            .setSubtitle(getString(R.string.biometric_prompt_subtitle))
+            .setAllowedAuthenticators(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or 
+                BiometricManager.Authenticators.BIOMETRIC_WEAK or 
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
+            .build()
+
+        prompt.authenticate(promptInfo)
+    }
+
+    /**
+     * Unlocks the screen overlay and reveals the WebView canvas.
+     */
+    private fun unlockBiometricVault() {
+        isBiometricUnlocked = true
+        val lockLayout = binding.biometricLockOverlayLayout.overlayBiometricLock
+        lockLayout.animate()
+            .alpha(0f)
+            .setDuration(250)
+            .withEndAction {
+                lockLayout.visibility = View.GONE
+                applySystemImmersiveMode()
+            }
+            .start()
     }
 }

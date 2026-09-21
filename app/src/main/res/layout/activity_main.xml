@@ -60,6 +60,16 @@
         </LinearLayout>
     </RelativeLayout>
 
+    <!-- Full-screen 4-Step Onboarding & Space Hub Discovery Overlay (shown when unconfigured) -->
+    <include
+        android:id="@+id/onboardingOverlayLayout"
+        layout="@layout/overlay_onboarding" />
+
+    <!-- Biometric Security Lock Screen Overlay (Companion Mode) -->
+    <include
+        android:id="@+id/biometricLockOverlayLayout"
+        layout="@layout/overlay_biometric_lock" />
+
     <!-- Custom High-End Kiosk Server Configuration Modal (Hidden by Default) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/settingsOverlay"
@@ -180,90 +190,759 @@
                     android:layout_marginBottom="16dp"
                     android:background="#1AFFFFFF" />
 
-                <!-- LAN Address Input -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/layoutLanUrl"
+                <!-- 0. Demo Mode Exit Banner (Visible only in Demo Mode) -->
+                <LinearLayout
+                    android:id="@+id/layoutDemoBanner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="@string/server_lan_url"
-                    android:textColorHint="@color/text_secondary"
-                    app:hintTextColor="@color/neon_teal"
-                    app:boxStrokeColor="@color/neon_teal"
-                    app:placeholderText="http://10.0.0.90:8125"
-                    app:placeholderTextColor="@color/text_secondary"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                    android:layout_marginBottom="16dp"
+                    android:background="@drawable/bg_demo_card"
+                    android:padding="16dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputLanUrl"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textColor="@color/text_primary"
-                        android:inputType="textUri" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
-                <!-- WAN Address Input -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/layoutWanUrl"
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/demo_banner_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/ob_demo_tag"
+                            android:textColor="#C084FC"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:background="@drawable/bg_demo_badge"
+                            android:paddingHorizontal="6dp"
+                            android:paddingVertical="2dp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/demo_banner_desc"
+                        android:textColor="#C4B5FD"
+                        android:textSize="11sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnExitDemoBanner"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/demo_banner_exit"
+                        android:textColor="#FF6B6B"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        app:strokeColor="#FF6B6B"
+                        app:strokeWidth="1dp"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_menu_close_clear_cancel"
+                        app:iconTint="#FF6B6B"
+                        app:iconSize="14dp" />
+                </LinearLayout>
+
+                <!-- 1. Instances List Container (Visible by Default) -->
+                <LinearLayout
+                    android:id="@+id/layoutInstancesList"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="visible">
+
+                    <!-- Flat Cards Instances container -->
+                    <LinearLayout
+                        android:id="@+id/instancesListContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <!-- Add Node Trigger Button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAddInstance"
+                        style="@style/Widget.MaterialComponents.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/btn_add_node"
+                        android:textColor="@color/black"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:backgroundTint="@color/neon_teal"
+                        app:cornerRadius="6dp"
+                        app:icon="@android:drawable/ic_menu_add"
+                        app:iconTint="@color/black" />
+                </LinearLayout>
+
+                <!-- 2. Add Instance Form Container (Hidden by Default) -->
+                <LinearLayout
+                    android:id="@+id/layoutAddInstanceForm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <!-- Back to list navigation -->
+                    <LinearLayout
+                        android:id="@+id/btnBackToList"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:paddingVertical="8dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/back_to_list"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Alias Input -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutInstanceName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="@string/instance_alias_hint"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        app:placeholderText="@string/instance_alias_placeholder"
+                        app:placeholderTextColor="@color/text_secondary"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputInstanceName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="text" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Auto Discover Hub Header & Action -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/server_lan_url"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnAutoDiscoverLan"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:text="@string/auto_discover_hub"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            app:strokeColor="@color/neon_teal"
+                            app:strokeWidth="1dp"
+                            app:cornerRadius="18dp"
+                            app:icon="@android:drawable/ic_menu_search"
+                            app:iconTint="@color/neon_teal"
+                            app:iconSize="14dp" />
+                    </LinearLayout>
+
+                    <!-- Dynamic Discovered Hosts Container -->
+                    <LinearLayout
+                        android:id="@+id/layoutDiscoveredHosts"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/txtDiscoveryStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/scanning_lan"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:layout_marginBottom="6dp" />
+
+                        <LinearLayout
+                            android:id="@+id/containerDiscoveredCards"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical" />
+                    </LinearLayout>
+
+                    <!-- LAN Address Input -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutLanUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="@string/server_lan_url"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        app:placeholderText="http://10.0.0.90:8125"
+                        app:placeholderTextColor="@color/text_secondary"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputLanUrl"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="textUri" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- WAN Address Input -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutWanUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:hint="@string/server_wan_url"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        app:placeholderText="https://grid.yourdomain.com"
+                        app:placeholderTextColor="@color/text_secondary"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputWanUrl"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="textUri" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Username Input -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutUsername"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:hint="@string/username"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputUsername"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="text" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Password Input -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutPassword"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:hint="@string/password"
+                        android:textColorHint="@color/text_secondary"
+                        app:hintTextColor="@color/neon_teal"
+                        app:boxStrokeColor="@color/neon_teal"
+                        app:passwordToggleEnabled="true"
+                        app:passwordToggleTint="@color/neon_teal"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputPassword"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:inputType="textPassword" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+
+                <!-- 3. Advanced Settings Collapsible Section -->
+                <LinearLayout
+                    android:id="@+id/layoutAdvancedSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
                     android:layout_marginTop="16dp"
-                    android:hint="@string/server_wan_url"
-                    android:textColorHint="@color/text_secondary"
-                    app:hintTextColor="@color/neon_teal"
-                    app:boxStrokeColor="@color/neon_teal"
-                    app:placeholderText="https://grid.yourdomain.com"
-                    app:placeholderTextColor="@color/text_secondary"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                    android:background="#0DFFFFFF"
+                    android:padding="12dp">
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputWanUrl"
+                    <!-- Clickable Trigger Strip -->
+                    <LinearLayout
+                        android:id="@+id/layoutAdvancedTrigger"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textColor="@color/text_primary"
-                        android:inputType="textUri" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:clickable="true"
+                        android:focusable="true">
 
-                <!-- Username Input -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/layoutUsername"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:hint="@string/username"
-                    android:textColorHint="@color/text_secondary"
-                    app:hintTextColor="@color/neon_teal"
-                    app:boxStrokeColor="@color/neon_teal"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@android:drawable/ic_menu_preferences"
+                            app:tint="@color/neon_teal" />
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputUsername"
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/advanced_settings"
+                            android:textColor="@color/neon_teal"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <ImageView
+                            android:id="@+id/imgAdvancedChevron"
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@android:drawable/arrow_down_float"
+                            app:tint="@color/neon_teal" />
+                    </LinearLayout>
+
+                    <!-- Collapsed Content (gone by default) -->
+                    <LinearLayout
+                        android:id="@+id/layoutAdvancedContent"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textColor="@color/text_primary"
-                        android:inputType="text" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:orientation="vertical"
+                        android:visibility="gone">
 
-                <!-- Password Input -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/layoutPassword"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:hint="@string/password"
-                    android:textColorHint="@color/text_secondary"
-                    app:hintTextColor="@color/neon_teal"
-                    app:boxStrokeColor="@color/neon_teal"
-                    app:passwordToggleEnabled="true"
-                    app:passwordToggleTint="@color/neon_teal"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="#1AFFFFFF" />
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/inputPassword"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/text_primary"
-                        android:inputType="textPassword" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        <!-- Device Mode selector -->
+                        <TextView
+                            android:id="@+id/txtDeviceModeLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/device_mode"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <RadioGroup
+                            android:id="@+id/radioGroupMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal">
+
+                            <RadioButton
+                                android:id="@+id/radioKiosk"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/mode_kiosk"
+                                android:textColor="@color/text_primary"
+                                android:buttonTint="@color/neon_teal"
+                                android:textSize="13sp"
+                                android:checked="true" />
+
+                            <RadioButton
+                                android:id="@+id/radioCompanion"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="24dp"
+                                android:text="@string/mode_companion"
+                                android:textColor="@color/text_primary"
+                                android:buttonTint="@color/neon_teal"
+                                android:textSize="13sp" />
+                        </RadioGroup>
+
+                        <!-- Biometric Security Toggle (Companion Mode) -->
+                        <LinearLayout
+                            android:id="@+id/layoutBiometricLock"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:id="@+id/txtBiometricTitle"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/biometric_lock_title"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/txtBiometricDesc"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="@string/biometric_lock_desc"
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <com.google.android.material.switchmaterial.SwitchMaterial
+                                android:id="@+id/switchBiometricLock"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                app:useMaterialThemeColors="false"
+                                app:thumbTint="@color/neon_teal"
+                                app:trackTint="#3300FFCC" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="#1AFFFFFF" />
+
+                        <!-- Earthquake Early Warning (EEW) Coordinates -->
+                        <LinearLayout
+                            android:id="@+id/layoutEewCoords"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/txtEewCoordsTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/eew_coords_title"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/txtEewCoordsDesc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/eew_coords_desc"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="horizontal">
+
+                                <com.google.android.material.textfield.TextInputLayout
+                                    android:id="@+id/layoutHomeLat"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginEnd="6dp"
+                                    android:hint="@string/latitude"
+                                    android:textColorHint="@color/text_secondary"
+                                    app:hintTextColor="@color/neon_teal"
+                                    app:boxStrokeColor="@color/neon_teal"
+                                    app:placeholderText="30.5728"
+                                    app:placeholderTextColor="@color/text_secondary"
+                                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                    <com.google.android.material.textfield.TextInputEditText
+                                        android:id="@+id/inputHomeLat"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="13sp"
+                                        android:fontFamily="monospace"
+                                        android:inputType="numberDecimal|numberSigned" />
+                                </com.google.android.material.textfield.TextInputLayout>
+
+                                <com.google.android.material.textfield.TextInputLayout
+                                    android:id="@+id/layoutHomeLon"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginStart="6dp"
+                                    android:hint="@string/longitude"
+                                    android:textColorHint="@color/text_secondary"
+                                    app:hintTextColor="@color/neon_teal"
+                                    app:boxStrokeColor="@color/neon_teal"
+                                    app:placeholderText="104.0668"
+                                    app:placeholderTextColor="@color/text_secondary"
+                                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                    <com.google.android.material.textfield.TextInputEditText
+                                        android:id="@+id/inputHomeLon"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="13sp"
+                                        android:fontFamily="monospace"
+                                        android:inputType="numberDecimal|numberSigned" />
+                                </com.google.android.material.textfield.TextInputLayout>
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="#1AFFFFFF" />
+
+                        <!-- App Theme selector -->
+                        <TextView
+                            android:id="@+id/txtAppThemeLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="APP THEME"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <LinearLayout
+                            android:id="@+id/layoutThemeSegments"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal"
+                            android:background="#15FFFFFF"
+                            android:padding="2dp">
+
+                            <TextView
+                                android:id="@+id/btnThemeDark"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="DARK"
+                                android:textColor="@color/black"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                android:gravity="center"
+                                android:background="@color/neon_teal"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+
+                            <TextView
+                                android:id="@+id/btnThemeNeon"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="NEON"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@android:color/transparent"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+
+                            <TextView
+                                android:id="@+id/btnThemeFrost"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="FROST"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@android:color/transparent"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="#1AFFFFFF" />
+
+                        <!-- Zoom level scale -->
+                        <TextView
+                            android:id="@+id/txtWebZoomLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/web_zoom"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <LinearLayout
+                            android:id="@+id/layoutZoomSegments"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal"
+                            android:background="#15FFFFFF"
+                            android:padding="2dp">
+
+                            <TextView
+                                android:id="@+id/btnZoom75"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="75%"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@android:color/transparent"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+
+                            <TextView
+                                android:id="@+id/btnZoom90"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="90%"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@android:color/transparent"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+
+                            <TextView
+                                android:id="@+id/btnZoom100"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="100%"
+                                android:textColor="@color/black"
+                                android:textStyle="bold"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@color/neon_teal"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+
+                            <TextView
+                                android:id="@+id/btnZoom115"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="115%"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@android:color/transparent"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+
+                            <TextView
+                                android:id="@+id/btnZoom130"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="130%"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp"
+                                android:gravity="center"
+                                android:background="@android:color/transparent"
+                                android:paddingVertical="8dp"
+                                android:clickable="true"
+                                android:focusable="true"/>
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="16dp"
+                            android:layout_marginBottom="16dp"
+                            android:background="#1AFFFFFF" />
+
+                        <!-- Secondary Actions (Quick Demo, Check Updates, Wipe Data) -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnQuickDemo"
+                                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="@string/quick_demo_btn"
+                                android:textColor="@color/neon_teal"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:strokeColor="@color/neon_teal"
+                                app:strokeWidth="1.5dp"
+                                app:cornerRadius="6dp"
+                                app:icon="@android:drawable/ic_media_play"
+                                app:iconTint="@color/neon_teal"
+                                app:iconPadding="4dp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnCheckUpdate"
+                                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:text="@string/check_updates"
+                                android:textColor="@color/neon_teal"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:strokeColor="@color/neon_teal"
+                                app:strokeWidth="1.5dp"
+                                app:cornerRadius="6dp"
+                                app:icon="@android:drawable/ic_popup_sync"
+                                app:iconTint="@color/neon_teal"
+                                app:iconPadding="4dp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnWipeData"
+                                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:text="@string/wipe_data_btn"
+                                android:textColor="#FF3333"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:strokeColor="#FF3333"
+                                app:strokeWidth="1.5dp"
+                                app:cornerRadius="6dp"
+                                app:icon="@android:drawable/ic_menu_delete"
+                                app:iconTint="#FF3333"
+                                app:iconPadding="4dp"
+                                android:visibility="gone" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
 
                 <!-- Connection Verification Status Label -->
                 <TextView
@@ -276,107 +955,13 @@
                     android:visibility="gone"
                     android:gravity="center_horizontal" />
 
-                <!-- Configured Mode Selection -->
-                <TextView
-                    android:id="@+id/txtDeviceModeLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:text="@string/device_mode"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
-
-                <RadioGroup
-                    android:id="@+id/radioGroupMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
-
-                    <RadioButton
-                        android:id="@+id/radioKiosk"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/mode_kiosk"
-                        android:textColor="@color/text_primary"
-                        android:buttonTint="@color/neon_teal"
-                        android:checked="true" />
-
-                    <RadioButton
-                        android:id="@+id/radioCompanion"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="24dp"
-                        android:text="@string/mode_companion"
-                        android:textColor="@color/text_primary"
-                        android:buttonTint="@color/neon_teal" />
-                </RadioGroup>
-
-
-
-                <!-- Buttons -->
+                <!-- Main Confirmation Actions (Cancel / Save Settings) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="16dp"
                     android:orientation="horizontal"
                     android:gravity="end">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnQuickDemo"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="一键进入演示系统"
-                        android:textColor="@color/neon_teal"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        app:strokeColor="@color/neon_teal"
-                        app:strokeWidth="1.5dp"
-                        app:cornerRadius="6dp"
-                        app:icon="@android:drawable/ic_media_play"
-                        app:iconTint="@color/neon_teal"
-                        app:iconPadding="4dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnExitDemo"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="一键退出演示系统"
-                        android:textColor="#FF3333"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        app:strokeColor="#FF3333"
-                        app:strokeWidth="1.5dp"
-                        app:cornerRadius="6dp"
-                        app:icon="@android:drawable/ic_menu_close_clear_cancel"
-                        app:iconTint="#FF3333"
-                        app:iconPadding="4dp"
-                        android:visibility="gone" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnWipeData"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="擦除数据并退出"
-                        android:textColor="#FF3333"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        app:strokeColor="#FF3333"
-                        app:strokeWidth="1.5dp"
-                        app:cornerRadius="6dp"
-                        app:icon="@android:drawable/ic_menu_delete"
-                        app:iconTint="#FF3333"
-                        app:iconPadding="4dp"
-                        android:visibility="gone" />
-
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        android:layout_weight="1" />
 
                     <Button
                         android:id="@+id/btnCancelSettings"

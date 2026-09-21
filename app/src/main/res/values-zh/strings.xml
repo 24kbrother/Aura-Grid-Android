@@ -1,10 +1,16 @@
 <resources>
     <string name="app_name">Aura Grid</string>
-    <string name="app_version">v2.1.0-OTA</string>
+    <string name="app_version">v2.2.3</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">Aura Grid 伴侣端配置</string>
-    <string name="settings_desc">配置服务器路由与运行模式</string>
+    <string name="settings_desc">节点配置</string>
+    <string name="btn_add_node">添加新的 AURA Grid 安全节点</string>
+    <string name="btn_verify_add">验证并添加</string>
+    <string name="btn_save_changes">验证并保存修改</string>
+    <string name="advanced_settings">高级设置</string>
+    <string name="confirm_wipe_warning">再次点击以确认擦除！</string>
+    <string name="back_to_list">◀ 返回</string>
     <string name="server_lan_url">局域网服务器地址 (Local LAN)</string>
     <string name="server_wan_url">公网服务器地址 (Cloud WAN)</string>
     <string name="username">用户名</string>
@@ -32,4 +38,72 @@
     <!-- OTA Upgrade Screen -->
     <string name="system_upgrade">系统升级</string>
     <string name="downloading_update">正在下载 Aura Grid Kiosk 升级包...</string>
+
+    <!-- OTA Upgrade Manual Buttons -->
+    <string name="check_updates">检查更新</string>
+    <string name="checking_updates">正在检查更新...</string>
+    <string name="no_updates_available">当前已是最新版本。</string>
+    <string name="update_check_failed">检查更新失败。</string>
+
+    <string name="web_zoom">网页缩放比例</string>
+
+    <!-- Subnet Auto-Discovery -->
+    <string name="auto_discover_hub">自动发现中枢</string>
+    <string name="scanning_lan">正在扫描局域网中枢…</string>
+    <string name="no_hub_found">未在当前 WiFi 发现可用中枢，请检查连接。</string>
+    <string name="hub_discovered">已发现局域网中枢</string>
+    <string name="discovered_hubs_hint">已发现局域网中枢（点击回填）：</string>
+
+    <!-- Onboarding Experience -->
+    <string name="ob_welcome_title">AURA GRID</string>
+    <string name="ob_welcome_subtitle">新一代家庭全屋数字孪生中枢\n极致沉浸 · 离线可用 · 毫秒响应</string>
+    <string name="ob_feature1_title">数字孪生中枢</string>
+    <string name="ob_feature1_desc">3D 全息户型光影渲染\n全屋设备状态直观映射，点触之间掌控空间</string>
+    <string name="ob_feature2_title">本地网络与隐私盾</string>
+    <string name="ob_feature2_desc">零数据上云 · 100% 本地化运行\n家庭物联网隐私与设备数据严格留存在本地网络</string>
+    <string name="ob_feature3_title">双轨漫游与安全防护</string>
+    <string name="ob_feature3_desc">回家局域网零时延 · 离家蜂窝无感漫游\n结合生物识别与硬件级指纹，打造金融级中枢防线</string>
+    <string name="ob_connect_title">连接空间中枢</string>
+    <string name="ob_connect_scanning">正在探测局域网内的 Aura Grid 服务器…</string>
+    <string name="ob_connect_discovered">已发现可用空间中枢（点击直连）：</string>
+    <string name="ob_connect_manual">手动输入中枢 IP 与凭据</string>
+    <string name="ob_next">下一步</string>
+    <string name="ob_start">开始连接</string>
+    <string name="ob_demo_title">✨ 探索官方演示系统</string>
+    <string name="ob_demo_desc">无需自建服务器，1 秒换取凭证直达真实全功能演示大屏</string>
+    <string name="ob_demo_tag">SANDBOX</string>
+    <string name="ob_demo_hint">即刻进入体验 →</string>
+    <string name="demo_banner_title">✨ 官方演示沙盒模式</string>
+    <string name="demo_banner_desc">当前运行于公共演示沙盒系统。若要接入并配置您自己的中枢，请退出演示模式。</string>
+    <string name="demo_banner_exit">退出演示模式并配置家庭系统</string>
+
+    <!-- Biometric Security & Vault -->
+    <string name="biometric_lock_title">生物识别安全锁</string>
+    <string name="biometric_lock_desc">在随身伴侣模式下，唤醒或重新进入 App 时需验证面容或指纹</string>
+    <string name="biometric_prompt_title">解锁 Aura Grid</string>
+    <string name="biometric_prompt_subtitle">请验证生物指纹或面容以进入家庭数字孪生中枢</string>
+    <string name="biometric_not_available">当前设备未录入或不支持生物识别硬件</string>
+    <string name="biometric_failed">身份验证未通过，请轻点重试</string>
+    <string name="biometric_use_password">使用设备锁屏密码</string>
+
+    <!-- Node Management & Actions -->
+    <string name="delete_node_confirm_title">移除中枢节点</string>
+    <string name="delete_node_confirm_desc">确定要移除该中枢节点吗？此操作将清除该中枢的本地凭据且不可撤回。</string>
+    <string name="delete_node_btn">删除节点</string>
+    <string name="instance_alias_hint">实例名称 / 别名</string>
+    <string name="instance_alias_placeholder">例如：别墅住家</string>
+    <string name="active_badge">已激活</string>
+    <string name="switch_node_btn">切换</string>
+
+    <!-- Earthquake Early Warning (EEW) Coordinates -->
+    <string name="eew_coords_title">地震预警基准坐标</string>
+    <string name="eew_coords_desc">家庭中枢基准坐标，在无 GPS 信号时作为离线计算烈度的静态基准。</string>
+    <string name="latitude">纬度 (Latitude)</string>
+    <string name="longitude">经度 (Longitude)</string>
+    <string name="auto_gps">自动定位 / 尚未配置</string>
+
+    <!-- System Actions -->
+    <string name="wipe_data_btn">擦除数据并退出</string>
+    <string name="quick_demo_btn">体验虚拟系统</string>
+    <string name="exit_demo_btn">退出演示模式</string>
 </resources>

@@ -12,8 +12,8 @@ android {
         applicationId = "com.auragrid.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 210
-        versionName = "2.1.0-OTA"
+        versionCode = 225
+        versionName = "2.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -57,6 +57,9 @@ dependencies {
 
     // Google FCM
     implementation("com.google.firebase:firebase-messaging-ktx:23.4.1")
+
+    // Biometric Authentication (Face/Fingerprint/Credential)
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Huawei HMS Push fallbacks
     implementation("com.huawei.hms:push:6.12.0.300")
