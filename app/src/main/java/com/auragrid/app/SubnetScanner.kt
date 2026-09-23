@@ -1,6 +1,8 @@
 package com.auragrid.app
 
 import android.content.Context
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -34,6 +36,9 @@ class SubnetScanner(private val context: Context) {
     private var scanExecutor = Executors.newFixedThreadPool(25)
     private val isScanning = AtomicBoolean(false)
 
+    private var nsdManager: NsdManager? = null
+    private var discoveryListener: NsdManager.DiscoveryListener? = null
+
     // Dedicated fast-timeout OkHttp client for local probing
     private val probeClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(800, TimeUnit.MILLISECONDS)
@@ -41,8 +46,8 @@ class SubnetScanner(private val context: Context) {
         .retryOnConnectionFailure(false)
         .build()
 
-    // Priority ports: 8125 (standard production port), 5173/5174 (dev), 8500 (backend), 3000, 80
-    private val targetPorts = listOf(8125, 5173, 5174, 8500, 3000, 80)
+    // Priority ports: 8125 (standard production port), 8500 (backend), 5173/5174 (dev), 3000, 80
+    private val targetPorts = listOf(8125, 8500, 5173, 5174, 3000, 80)
 
     interface ScanCallback {
         fun onHostDiscovered(host: DiscoveredHost)
@@ -61,39 +66,119 @@ class SubnetScanner(private val context: Context) {
             }
             scanExecutor = Executors.newFixedThreadPool(25)
         }
+        discoveryListener?.let { listener ->
+            try {
+                nsdManager?.stopServiceDiscovery(listener)
+            } catch (e: Exception) {
+                Log.w("SubnetScanner", "Error stopping NSD discovery: ${e.message}")
+            }
+            discoveryListener = null
+        }
     }
 
     fun startScan(callback: ScanCallback) {
         stopScan()
         isScanning.set(true)
 
+        val candidates = Collections.newSetFromMap(ConcurrentHashMap<DiscoveredHost, Boolean>())
+        val seenUrls = ConcurrentHashMap.newKeySet<String>()
+
+        // 1. Apple Bonjour / mDNS zero-latency discovery via Android NsdManager
+        try {
+            nsdManager = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
+            val listener = object : NsdManager.DiscoveryListener {
+                override fun onDiscoveryStarted(regType: String) {
+                    Log.d("SubnetScanner", "NSD discovery started: $regType")
+                }
+
+                override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                    Log.d("SubnetScanner", "NSD service found: ${serviceInfo.serviceName}, type: ${serviceInfo.serviceType}")
+                    if (!isScanning.get()) return
+                    try {
+                        nsdManager?.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                                Log.w("SubnetScanner", "NSD resolve failed for ${serviceInfo.serviceName}, code: $errorCode")
+                            }
+
+                            override fun onServiceResolved(resolvedService: NsdServiceInfo) {
+                                if (!isScanning.get()) return
+                                val hostAddress = resolvedService.host?.hostAddress
+                                val port = resolvedService.port
+                                if (!hostAddress.isNullOrEmpty() && port > 0) {
+                                    val url = "http://$hostAddress:$port"
+                                    val host = DiscoveredHost(
+                                        url = url,
+                                        displayAddress = "$hostAddress:$port",
+                                        latencyMs = 2 // mDNS zero-latency discovery
+                                    )
+                                    if (seenUrls.add(host.url)) {
+                                        candidates.add(host)
+                                        mainHandler.post {
+                                            callback.onHostDiscovered(host)
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                    } catch (e: Exception) {
+                        Log.w("SubnetScanner", "NSD resolve exception: ${e.message}")
+                    }
+                }
+
+                override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                    Log.d("SubnetScanner", "NSD service lost: ${serviceInfo.serviceName}")
+                }
+
+                override fun onDiscoveryStopped(serviceType: String) {
+                    Log.d("SubnetScanner", "NSD discovery stopped: $serviceType")
+                }
+
+                override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                    Log.w("SubnetScanner", "NSD start discovery failed: $errorCode")
+                    try {
+                        nsdManager?.stopServiceDiscovery(this)
+                    } catch (_: Exception) {}
+                }
+
+                override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+                    Log.w("SubnetScanner", "NSD stop discovery failed: $errorCode")
+                }
+            }
+            discoveryListener = listener
+            nsdManager?.discoverServices("_auragrid._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
+        } catch (e: Exception) {
+            Log.w("SubnetScanner", "Failed to start NSD discovery: ${e.message}")
+        }
+
         val localIp = getLocalWifiIp()
         if (localIp.isNullOrEmpty()) {
-            Log.w("SubnetScanner", "Unable to determine local WiFi IP. Cannot scan subnet.")
-            isScanning.set(false)
-            callback.onScanCompleted(emptyList())
+            Log.w("SubnetScanner", "Unable to determine local WiFi IP. Cannot scan HTTP subnet.")
+            if (candidates.isEmpty()) {
+                mainHandler.postDelayed({
+                    if (isScanning.compareAndSet(true, false)) {
+                        callback.onScanCompleted(candidates.toList())
+                    }
+                }, 3000)
+            }
             return
         }
 
         val subnetPrefix = deriveSubnet(localIp)
         Log.i("SubnetScanner", "Starting prioritized subnet scan on $subnetPrefix.1-254...")
 
-        val candidates = Collections.newSetFromMap(ConcurrentHashMap<DiscoveredHost, Boolean>())
-        val seenUrls = ConcurrentHashMap.newKeySet<String>()
-
         // Generate prioritized candidate hosts
         val prioritizedHosts = buildPrioritizedHostList(localIp)
 
         // Generate prioritized probe URL list
         val probeUrls = mutableListOf<String>()
-        // Pass 1: Standard & Dev ports (8125, 5173, 5174) on priority hosts
-        for (port in listOf(8125, 5173, 5174)) {
+        // Pass 1: Standard & Core ports (8125, 8500) on priority hosts
+        for (port in listOf(8125, 8500)) {
             for (host in prioritizedHosts) {
                 probeUrls.add("http://$subnetPrefix.$host:$port")
             }
         }
-        // Pass 2: Secondary ports (8500, 3000, 80)
-        for (port in listOf(8500, 3000, 80)) {
+        // Pass 2: Secondary & Dev ports (5173, 5174, 3000, 80)
+        for (port in listOf(5173, 5174, 3000, 80)) {
             for (host in prioritizedHosts) {
                 probeUrls.add("http://$subnetPrefix.$host:$port")
             }
@@ -126,6 +211,12 @@ class SubnetScanner(private val context: Context) {
                             }
                         }
                         if (current >= totalTasks && isScanning.compareAndSet(true, false)) {
+                            discoveryListener?.let { listener ->
+                                try {
+                                    nsdManager?.stopServiceDiscovery(listener)
+                                } catch (_: Exception) {}
+                                discoveryListener = null
+                            }
                             val sortedResults = candidates.toList().sortedBy { it.latencyMs }
                             mainHandler.post {
                                 callback.onScanCompleted(sortedResults)

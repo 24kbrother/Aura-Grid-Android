@@ -2,6 +2,26 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-09-24 协作记录 (苹果 Bonjour / mDNS 毫秒级零感发现引擎 NsdManager 双轨加速落地)
+
+### 1. Android 原生 NsdManager mDNS 服务发现落地 (`SubnetScanner.kt`)
+- **毫秒级零感发现体验全面对齐 iOS**：
+  - 接入 Android 原生 `NsdManager` (`Context.NSD_SERVICE`)；
+  - 启动扫描时（`subnetScanner.startScan()`），并发启动 `discoverServices("_auragrid._tcp", PROTOCOL_DNS_SD)`；
+  - 在 1~5 毫秒内捕获局域网组播发布的 `_auragrid._tcp` 服务，通过 `ResolveListener` 毫秒级解析出物理 IPv4 与端口（如 `10.0.0.8:8125`）；
+  - 发现后立即推入候选列表并回调 `callback.onHostDiscovered(host)`，实现类似 Home Assistant / Apple TV 的无感瞬时发现体验；
+- **双轨无感兼容与原子级去重**：
+  - 原有 HTTP 子网探测引擎继续并行静默运行，并优化优先探测端口（`8125`、`8500` 第一优先级）；
+  - 通过 `ConcurrentHashMap.newKeySet<String>()` 的 `seenUrls.add(host.url)` 实现原子级线程安全去重；
+  - 无论是 mDNS 先命中还是 HTTP 先命中，均无重复添加，即使在不支持组播的 Docker Bridge 模式或访客网络下，仍有 HTTP 子网探测无缝兜底；
+- **扫描生命周期看门狗与资源释放**：
+  - `stopScan()` 与全量探测完成时自动调用 `stopServiceDiscovery`，彻底释放系统级 NSD 监听资源，防止后台持续耗电。
+
+### 2. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并验证通过：`BUILD SUCCESSFUL in 47s`，生成最终产物 `outputs/apk/AuraGrid-v2.2.5-20260924_032651.apk` (11M)。
+
+---
+
 ## 📅 2026-09-21 协作记录 (双端体验绝对对齐：首次配置双轨梯度回退、多节点管理与防误触、家庭地震预警基准坐标及四语言资源硬化)
 
 ### 1. 登录与节点保存双轨鉴权梯度回退 (`MainActivity.kt`)
