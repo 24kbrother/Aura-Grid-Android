@@ -4,14 +4,15 @@
     android:id="@+id/layoutInstanceCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
     android:padding="12dp"
     android:clickable="true"
     android:focusable="true">
 
-    <!-- High-end vertical Accent Bar on the very left (visible only if active) -->
+    <!-- Vertical Accent Bar on the very left (visible only if active) -->
     <View
         android:id="@+id/viewAccentBar"
-        android:layout_width="4dp"
+        android:layout_width="3dp"
         android:layout_height="0dp"
         android:background="@color/neon_teal"
         android:visibility="gone"
@@ -24,23 +25,73 @@
         android:id="@+id/imgActiveDot"
         android:layout_width="8dp"
         android:layout_height="8dp"
-        android:layout_marginStart="8dp"
-        android:src="@android:drawable/presence_online"
-        app:tint="@color/text_secondary"
+        android:layout_marginStart="6dp"
+        android:src="@drawable/bg_status_dot"
+        app:tint="@color/neon_teal"
         app:layout_constraintLeft_toRightOf="@id/viewAccentBar"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
+
+    <!-- Right Action Buttons Container (aligned right, never overlaps text) -->
+    <LinearLayout
+        android:id="@+id/layoutRightActions"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- Switch Button Capsule -->
+        <TextView
+            android:id="@+id/btnSwitchInstance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:text="SWITCH"
+            android:textColor="@color/black"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:background="@color/neon_teal"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone" />
+
+        <!-- Edit Instance pencil button -->
+        <ImageView
+            android:id="@+id/btnEditInstance"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/bg_frosted_circle"
+            android:padding="7dp"
+            android:src="@android:drawable/ic_menu_edit"
+            app:tint="@color/neon_teal" />
+
+        <!-- Delete Garbage bin button -->
+        <ImageView
+            android:id="@+id/btnDeleteInstance"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/bg_frosted_circle"
+            android:padding="7dp"
+            android:src="@android:drawable/ic_menu_delete"
+            app:tint="@color/neon_red" />
+    </LinearLayout>
 
     <!-- Instance metadata information container -->
     <LinearLayout
         android:id="@+id/layoutMetaContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="8dp"
         android:orientation="vertical"
         app:layout_constraintLeft_toRightOf="@id/imgActiveDot"
-        app:layout_constraintRight_toLeftOf="@id/btnSwitchInstance"
+        app:layout_constraintRight_toLeftOf="@id/layoutRightActions"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent">
 
@@ -55,20 +106,20 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_primary"
-                android:textSize="15sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/txtInstanceStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="6dp"
                 android:textColor="@color/neon_teal"
                 android:textSize="8sp"
                 android:textStyle="bold"
-                android:background="#1F00E5FF"
-                android:paddingHorizontal="4dp"
-                android:paddingVertical="1dp"
+                android:background="@drawable/bg_pill_cyan"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="1.5dp"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -85,7 +136,9 @@
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp"
-                android:fontFamily="monospace" />
+                android:fontFamily="monospace"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
             <TextView
                 android:id="@+id/txtInstanceDotWan"
@@ -109,52 +162,5 @@
                 android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
-
-    <!-- Switch Button Capsule -->
-    <TextView
-        android:id="@+id/btnSwitchInstance"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="8dp"
-        android:text="SWITCH"
-        android:textColor="@color/black"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:background="@color/neon_teal"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="5dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone"
-        app:layout_constraintRight_toLeftOf="@id/btnDeleteInstance"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent" />
-
-    <!-- Edit Instance pencil button -->
-    <ImageView
-        android:id="@+id/btnEditInstance"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:layout_marginEnd="6dp"
-        android:background="#1500E5FF"
-        android:padding="6dp"
-        android:src="@android:drawable/ic_menu_edit"
-        app:tint="@color/neon_teal"
-        app:layout_constraintRight_toLeftOf="@id/btnDeleteInstance"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent" />
-
-    <!-- Delete Garbage bin button -->
-    <ImageView
-        android:id="@+id/btnDeleteInstance"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:background="#15FF3B30"
-        android:padding="6dp"
-        android:src="@android:drawable/ic_menu_delete"
-        app:tint="@color/neon_red"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

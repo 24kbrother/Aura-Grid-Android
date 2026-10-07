@@ -105,4 +105,11 @@
     <string name="wipe_data_btn">Wipe Data &amp; Exit</string>
     <string name="quick_demo_btn">Experience Virtual System</string>
     <string name="exit_demo_btn">Exit Sandbox Demo</string>
+
+    <!-- Bento Section Headers -->
+    <string name="section_nodes">SPACE HUB NODES</string>
+    <string name="section_routes">GATEWAY ROUTES</string>
+    <string name="section_auth">SECURITY &amp; AUTHENTICATION</string>
+    <string name="section_runtime">RUNTIME &amp; HARDWARE</string>
+    <string name="app_language">Application Language</string>
 </resources>

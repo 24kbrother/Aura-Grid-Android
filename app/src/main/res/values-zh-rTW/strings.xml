@@ -106,4 +106,11 @@
     <string name="wipe_data_btn">擦除數據並退出</string>
     <string name="quick_demo_btn">體驗虛擬系統</string>
     <string name="exit_demo_btn">退出演示模式</string>
+
+    <!-- Bento Section Headers -->
+    <string name="section_nodes">空間中樞節點</string>
+    <string name="section_routes">網關定址與路由</string>
+    <string name="section_auth">中樞鑒權憑證</string>
+    <string name="section_runtime">運行環境與硬體</string>
+    <string name="app_language">介面語言</string>
 </resources>

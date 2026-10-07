@@ -2,6 +2,27 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-10-08 协作记录 (设置面板全维度升维：苹果 Liquid Glass / 黑曜石 Bento 布局重构与微晶交互落地)
+
+### 1. 设置面板视觉层级与微晶工业设计升维 (`activity_main.xml`, `item_instance_row.xml`, `MainActivity.kt`)
+- **对齐 iOS 客户端顶级排版体验 (Liquid Glass / Obsidian Bento 体系)**：
+  - **顶部固定导航控制台**：注入科技感极强的顶部 Header（`txtSettingsTitle`、科技青胶囊微徽章 `txtStatusPill`、副标题 `txtSettingsDesc`）以及右上角黑曜石磨砂圆形关闭按钮（`btnTopCloseSettings`），实现全局 1 秒直出与一键退出；
+  - **4 阶 Bento 黑曜石微晶卡片分区编排**：
+    1. **空间中枢节点 (SPACE HUB NODES)**：中枢列表容器采用深空微晶底衬，添加节点按钮升维为发光青边框卡片；
+    2. **网关寻址与路由 (GATEWAY ROUTES)**：局域网 LAN / 远程 WAN 输入组采用黑曜石卡片包裹，内置「🔍 自动发现中枢」脉冲探针按钮与发现卡片流；
+    3. **中枢鉴权凭证 (SECURITY & AUTHENTICATION)**：统一账号密码凭证卡片，去重并强化输入视觉焦点；
+    4. **运行环境与硬件 (RUNTIME & HARDWARE)**：包含工作模式单选胶囊、生物识别安全锁、家庭地震预警基准坐标、界面三语切换、Web 缩放分段器、版本检查与擦除数据等高级配置；
+- **节点实例卡片重构 (`item_instance_row.xml`)**：
+  - 彻底淘汰旧版 Gingerbread 风格 `@android:drawable/presence_online`，采用纯净 SVG 状态圆点 (`bg_status_dot.xml`)；
+  - 右侧操作按钮独立容器封装，采用苹果风格黑曜石圆形毛玻璃按钮组（切换 `btnSwitchInstance`、编辑 `btnEditInstance`、删除 `btnDeleteInstance`），彻底根治文本溢出与挤压变形问题；
+- **四语言资源完全对齐**：
+  - 补齐 `section_nodes`、`section_routes`、`section_auth`、`section_runtime`、`app_language` 在默认英文、英文、简体中文与繁体中文全部资源池中的定义。
+
+### 2. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并验证通过：`BUILD SUCCESSFUL in 21s`，生成最终产物 `outputs/apk/AuraGrid-v2.2.5-20261008_010654.apk` (11M)。
+
+---
+
 ## 📅 2026-10-08 协作记录 (竖屏设置页「服务器」点击直出原生配置菜单与双轨 JS Bridge Polyfill 落地)
 
 ### 1. 竖屏端「服务器」菜单呼起痛点根治与双端协议对齐 (`MainActivity.kt`)

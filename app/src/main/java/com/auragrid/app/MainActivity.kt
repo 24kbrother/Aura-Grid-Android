@@ -1340,6 +1340,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnTopCloseSettings.setOnClickListener {
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            toggleSettingsOverlay(false)
+            val isConfigured = sharedPreferences.getBoolean("is_configured", false)
+            if (!isConfigured || lanUrl.isEmpty() || lanUrl == "http://10.0.0.90:3001") {
+                showOnboardingWizard()
+            }
+        }
+
         // Advanced expandable settings panel trigger listener
         binding.layoutAdvancedTrigger.setOnClickListener {
             isAdvancedExpanded = !isAdvancedExpanded
@@ -3275,6 +3284,7 @@ class MainActivity : AppCompatActivity() {
             // Show verification status clean
             binding.txtVerificationStatus.visibility = View.GONE
             binding.btnSaveSettings.visibility = View.VISIBLE
+            binding.btnCancelSettings.visibility = View.VISIBLE
             binding.btnCancelSettings.text = res.getString(R.string.cancel)
         } else {
             if (::subnetScanner.isInitialized && subnetScanner.isScanning()) {
@@ -3289,13 +3299,7 @@ class MainActivity : AppCompatActivity() {
             
             binding.txtVerificationStatus.visibility = View.GONE
             binding.btnSaveSettings.visibility = View.GONE
-            
-            // Cancel acts as "Close" in list mode
-            binding.btnCancelSettings.text = when (tempSelectedLang) {
-                "zh-rTW", "zh-TW" -> "關閉"
-                "zh" -> "关闭"
-                else -> "CLOSE"
-            }
+            binding.btnCancelSettings.visibility = View.GONE
             
             renderInstancesList()
         }
