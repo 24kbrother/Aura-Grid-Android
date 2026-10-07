@@ -2,6 +2,23 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-10-08 协作记录 (设置面板「高级设置」交互升维：48dp 触控热区扩充、全卡片盲区消除与触觉震动)
+
+### 1. 「高级设置」触控热区与微交互重构 (`activity_main.xml`, `MainActivity.kt`)
+- **病灶根治（突破 18dp 极窄盲区）**：
+  - 过去 `layoutAdvancedTrigger` 高度为 `wrap_content` 且无内边距，实际触控热区高度仅 ~18dp，远低于 Android 官方 48dp 交互基线，极易误点在卡片 14dp 内衬空白处导致事件被吞；
+- **48dp 物理热区与 Material 水波纹注入**：
+  - 在 `layoutAdvancedTrigger` 显式设置 `android:minHeight="48dp"` 与 `android:paddingVertical="8dp"`，触控响应面积扩充 250% 以上；
+  - 注入 `android:background="?attr/selectableItemBackground"`，提供 Material 即时波纹扩散视觉反馈；
+- **全卡片 100% 盲区消除与触控微震动**：
+  - 在折叠未展开状态下，为外层卡片容器 `layoutAdvancedSection` 同步绑定触发逻辑，点击外边缘或内衬 padding 任意像素均可秒级展开；
+  - 展开与折叠动作挂载 `performHapticFeedback(VIRTUAL_KEY)`，提供清脆的高级触感回馈。
+
+### 2. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并验证通过：`BUILD SUCCESSFUL in 16s`，生成最终产物 `outputs/apk/AuraGrid-v2.2.5-20261008_014552.apk` (11M)。
+
+---
+
 ## 📅 2026-10-08 协作记录 (设置面板防呆与排版深造：沙盒入口剔除、工作模式纵向精简与动态 i18n 全量自适应)
 
 ### 1. 业务防呆与排版病灶歼灭 (`activity_main.xml`, `MainActivity.kt`, 多语言资源池)

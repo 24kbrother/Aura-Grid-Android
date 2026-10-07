@@ -1359,7 +1359,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Advanced expandable settings panel trigger listener
-        binding.layoutAdvancedTrigger.setOnClickListener {
+        fun toggleAdvancedSettings() {
+            binding.layoutAdvancedTrigger.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
             isAdvancedExpanded = !isAdvancedExpanded
             if (isAdvancedExpanded) {
                 binding.layoutAdvancedContent.visibility = View.VISIBLE
@@ -1367,6 +1368,17 @@ class MainActivity : AppCompatActivity() {
             } else {
                 binding.layoutAdvancedContent.visibility = View.GONE
                 binding.imgAdvancedChevron.animate().rotation(0f).setDuration(200).start()
+            }
+        }
+
+        binding.layoutAdvancedTrigger.setOnClickListener {
+            toggleAdvancedSettings()
+        }
+
+        binding.layoutAdvancedSection.setOnClickListener {
+            // When collapsed, tapping anywhere in the card padding area also expands it
+            if (!isAdvancedExpanded) {
+                toggleAdvancedSettings()
             }
         }
 
