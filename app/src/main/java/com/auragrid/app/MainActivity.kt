@@ -1212,8 +1212,17 @@ class MainActivity : AppCompatActivity() {
         binding.layoutHomeLon.hint = res.getString(R.string.longitude)
         binding.btnAddInstance.text = res.getString(R.string.btn_add_node)
         
+        binding.txtSectionNodes.text = res.getString(R.string.section_nodes)
+        binding.txtSectionRoutes.text = res.getString(R.string.section_routes)
+        binding.txtSectionAuth.text = res.getString(R.string.section_auth)
+        binding.txtSectionRuntime.text = res.getString(R.string.section_runtime)
+        binding.txtAppLanguageLabel.text = res.getString(R.string.app_language)
+        binding.txtAdvancedSettingsTitle.text = res.getString(R.string.advanced_settings)
+        binding.txtDemoBannerTitle.text = res.getString(R.string.demo_banner_title)
+        binding.txtDemoBannerDesc.text = res.getString(R.string.demo_banner_desc)
+        binding.btnExitDemoBanner.text = res.getString(R.string.demo_banner_exit)
+
         binding.btnCancelSettings.text = res.getString(R.string.cancel)
-        binding.btnQuickDemo.text = res.getString(R.string.quick_demo_btn)
         binding.btnWipeData.text = res.getString(R.string.wipe_data_btn)
         binding.btnCheckUpdate.text = res.getString(R.string.check_updates)
         binding.txtWebZoomLabel.text = res.getString(R.string.web_zoom)
@@ -1542,91 +1551,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnQuickDemo.setOnClickListener {
-            showDemoModeIntroductionDialog { dialog ->
-                val isZh = tempSelectedLang == "zh"
-                
-                // Disable settings overlay buttons to prevent secondary actions
-                binding.btnSaveSettings.isEnabled = false
-                binding.btnCancelSettings.isEnabled = false
-                binding.btnQuickDemo.isEnabled = false
 
-                // 2. 异步执行静默网络握手
-                executor.execute {
-                    var token: String? = null
-                    var errorMsg: String? = null
-                    
-                    try {
-                        val authURL = java.net.URL("https://demo2.iaura.cn/api/v1/auth/login")
-                        val connection = authURL.openConnection() as java.net.HttpURLConnection
-                        connection.requestMethod = "POST"
-                        connection.setRequestProperty("Content-Type", "application/json")
-                        // 注入特权 Companion App User-Agent 绕过 Nginx 444 阻断
-                        connection.setRequestProperty("User-Agent", "AuraGridApp/2.2.4 (Android; Mobile)")
-                        connection.connectTimeout = 6000
-                        connection.readTimeout = 6000
-                        connection.doOutput = true
-
-                        val jsonInputString = "{\"username\": \"admin\", \"password\": \"123456\"}"
-                        connection.outputStream.use { os ->
-                            val input = jsonInputString.toByteArray(charset("utf-8"))
-                            os.write(input, 0, input.size)
-                        }
-
-                        val code = connection.responseCode
-                        if (code == 200 || code == 201) {
-                            val response = connection.inputStream.bufferedReader().use { it.readText() }
-                            val jsonObject = org.json.JSONObject(response)
-                            if (jsonObject.has("access_token")) {
-                                token = jsonObject.getString("access_token")
-                            }
-                        } else {
-                            errorMsg = "HTTP $code"
-                        }
-                    } catch (e: java.lang.Exception) {
-                        errorMsg = e.localizedMessage
-                    }
-
-                    val finalToken = token
-                    val finalErrorMsg = errorMsg
-
-                    runOnUiThread {
-                        binding.btnSaveSettings.isEnabled = true
-                        binding.btnCancelSettings.isEnabled = true
-                        binding.btnQuickDemo.isEnabled = true
-
-                        if (finalToken != null) {
-                            // 3. 直接保存硬编码的演示配置，静默绕过表单输入！
-                            val isKiosk = binding.radioKiosk.isChecked
-                            sharedPreferences.edit().putBoolean("is_demo_mode", true).apply()
-                            
-                            // 先安全关闭 Dialog 并隐藏设置页，再保存配置触发 Activity 重建，彻底规避 WindowManager 坏 Token 闪退
-                            try {
-                                dialog.dismiss()
-                            } catch (e: java.lang.Exception) {
-                                e.printStackTrace()
-                            }
-                            toggleSettingsOverlay(false)
-                            binding.btnCancelSettings.visibility = View.VISIBLE
-                            
-                            saveConfig("https://demo2.iaura.cn", "https://demo2.iaura.cn", "admin", "123456", finalToken, isKiosk, tempSelectedLang, tempSelectedZoom)
-                        } else {
-                            // Restore dialog UI and display error message inside full-screen dialog
-                            val scrollView = dialog.findViewById<android.widget.ScrollView>(10001)
-                            val buttonsLayout = dialog.findViewById<android.widget.LinearLayout>(10002)
-                            val loadingLayout = dialog.findViewById<android.widget.LinearLayout>(10003)
-                            val dialogErrorText = dialog.findViewById<android.widget.TextView>(10004)
-                            
-                            scrollView?.visibility = android.view.View.VISIBLE
-                            buttonsLayout?.visibility = android.view.View.VISIBLE
-                            loadingLayout?.visibility = android.view.View.GONE
-                            dialogErrorText?.visibility = android.view.View.VISIBLE
-                            dialogErrorText?.text = (if (isZh) "进入演示系统失败: " else "Failed to enter demo: ") + (finalErrorMsg ?: "Unknown error")
-                        }
-                    }
-                }
-            }
-        }
 
 
         // Safety double-confirmation wipe button click listener
@@ -2133,11 +2058,9 @@ class MainActivity : AppCompatActivity() {
                     it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
                     executeFactoryResetAndShowOnboarding()
                 }
-                binding.btnQuickDemo.visibility = View.GONE
                 binding.btnWipeData.visibility = View.GONE
             } else {
                 binding.layoutDemoBanner.visibility = View.GONE
-                binding.btnQuickDemo.visibility = View.VISIBLE
                 val isConfigured = sharedPreferences.getBoolean("is_configured", false)
                 binding.btnWipeData.visibility = if (isConfigured) View.VISIBLE else View.GONE
             }
@@ -2358,7 +2281,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Secondary outlined buttons
-        val outlinedButtons = listOf(binding.btnQuickDemo, binding.btnCheckUpdate)
+        val outlinedButtons = listOf(binding.btnCheckUpdate)
         for (btn in outlinedButtons) {
             btn.setTextColor(accentColor)
             btn.strokeColor = android.content.res.ColorStateList.valueOf(accentColor)

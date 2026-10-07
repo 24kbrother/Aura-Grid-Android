@@ -210,6 +210,7 @@
                                 android:gravity="center_vertical">
 
                                 <TextView
+                                    android:id="@+id/txtDemoBannerTitle"
                                     android:layout_width="0dp"
                                     android:layout_height="wrap_content"
                                     android:layout_weight="1"
@@ -231,6 +232,7 @@
                             </LinearLayout>
 
                             <TextView
+                                android:id="@+id/txtDemoBannerDesc"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="4dp"
@@ -266,6 +268,7 @@
 
                             <!-- Section Title -->
                             <TextView
+                                android:id="@+id/txtSectionNodes"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/section_nodes"
@@ -351,6 +354,7 @@
 
                             <!-- Gateway Routes Bento Card -->
                             <TextView
+                                android:id="@+id/txtSectionRoutes"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/section_routes"
@@ -501,6 +505,7 @@
 
                             <!-- Authentication Credentials Bento Card -->
                             <TextView
+                                android:id="@+id/txtSectionAuth"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/section_auth"
@@ -564,6 +569,7 @@
 
                         <!-- 3. Hardware & Runtime Bento Card -->
                         <TextView
+                            android:id="@+id/txtSectionRuntime"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/section_runtime"
@@ -645,11 +651,11 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="4dp"
-                                android:orientation="horizontal">
+                                android:orientation="vertical">
 
                                 <RadioButton
                                     android:id="@+id/radioKiosk"
-                                    android:layout_width="wrap_content"
+                                    android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
                                     android:text="@string/mode_kiosk"
                                     android:textColor="@color/text_primary"
@@ -659,9 +665,9 @@
 
                                 <RadioButton
                                     android:id="@+id/radioCompanion"
-                                    android:layout_width="wrap_content"
+                                    android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
-                                    android:layout_marginStart="20dp"
+                                    android:layout_marginTop="2dp"
                                     android:text="@string/mode_companion"
                                     android:textColor="@color/text_primary"
                                     android:buttonTint="@color/neon_teal"
@@ -683,6 +689,7 @@
                                 android:gravity="center_vertical">
 
                                 <TextView
+                                    android:id="@+id/txtAppLanguageLabel"
                                     android:layout_width="0dp"
                                     android:layout_height="wrap_content"
                                     android:layout_weight="1"
@@ -768,6 +775,7 @@
                                     app:tint="@color/neon_teal" />
 
                                 <TextView
+                                    android:id="@+id/txtAdvancedSettingsTitle"
                                     android:layout_width="0dp"
                                     android:layout_height="wrap_content"
                                     android:layout_weight="1"
@@ -1054,34 +1062,17 @@
                                     android:layout_marginBottom="12dp"
                                     android:background="#14FFFFFF" />
 
-                                <!-- Secondary Actions (Quick Demo, Check Updates, Wipe Data) -->
+                                <!-- Secondary Actions (Check Updates, Wipe Data) -->
                                 <LinearLayout
                                     android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
                                     android:orientation="vertical">
 
                                     <com.google.android.material.button.MaterialButton
-                                        android:id="@+id/btnQuickDemo"
-                                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="38dp"
-                                        android:text="@string/quick_demo_btn"
-                                        android:textColor="@color/neon_teal"
-                                        android:textSize="11sp"
-                                        android:textStyle="bold"
-                                        app:strokeColor="@color/neon_teal"
-                                        app:strokeWidth="1dp"
-                                        app:cornerRadius="8dp"
-                                        app:icon="@android:drawable/ic_media_play"
-                                        app:iconTint="@color/neon_teal"
-                                        app:iconPadding="4dp" />
-
-                                    <com.google.android.material.button.MaterialButton
                                         android:id="@+id/btnCheckUpdate"
                                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                                         android:layout_width="match_parent"
                                         android:layout_height="38dp"
-                                        android:layout_marginTop="8dp"
                                         android:text="@string/check_updates"
                                         android:textColor="@color/neon_teal"
                                         android:textSize="11sp"

@@ -2,6 +2,27 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-10-08 协作记录 (设置面板防呆与排版深造：沙盒入口剔除、工作模式纵向精简与动态 i18n 全量自适应)
+
+### 1. 业务防呆与排版病灶歼灭 (`activity_main.xml`, `MainActivity.kt`, 多语言资源池)
+- **取消设置面板官方沙盒体验入口 (`btnQuickDemo`)**：
+  - 彻底拔除高级设置中的「体验虚拟系统」按钮，规避用户在已配置真实家庭中枢时误触导致凭据与实例被覆盖清空的致命风险；
+  - 仅保留首次安装引导向导（Onboarding Wizard）中的直达体验，以及真正处于沙盒时顶部的「退出演示模式并配置家庭系统」（`layoutDemoBanner`）；
+- **设备工作模式选项精简与纵向全宽排版**：
+  - 剔除括号内冗余长句注释（`(屏幕常亮)` / `(系统息屏)`），精简为对称、高质感的科技命名：
+    - 简中：`挂墙大屏模式` / `随身伴侣模式`
+    - 繁中：`掛牆大螢幕模式` / `隨身伴侶模式`
+    - 英文：`Wall Kiosk` / `Mobile Companion`
+  - 单选组（`radioGroupMode`）由易挤压折行的横向排版升级为 **纵向全宽排列（`orientation="vertical"` + `match_parent`）**，彻底根除中英文环境下的折行错位与挤压问题，触控区域更大更易点按；
+- **设置面板多语言（i18n）全链路无遗漏动态自适应**：
+  - 为 Bento 卡片 4 大分类标题（`txtSectionNodes`、`txtSectionRoutes`、`txtSectionAuth`、`txtSectionRuntime`）、语言行标签（`txtAppLanguageLabel`）、高级设置标题（`txtAdvancedSettingsTitle`）以及沙盒横幅全量注入 ViewBinding 引用；
+  - 在 `applyLanguageToSettingsUI` 中挂载毫秒级文本重绘，实现点击 `[ 简 | 繁 | EN ]` 分段器瞬间，全局所有可见文本 100% 即时无感切换。
+
+### 2. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并验证通过：`BUILD SUCCESSFUL in 18s`，生成最终产物 `outputs/apk/AuraGrid-v2.2.5-20261008_013616.apk` (11M)。
+
+---
+
 ## 📅 2026-10-08 协作记录 (设置面板全维度升维：苹果 Liquid Glass / 黑曜石 Bento 布局重构与微晶交互落地)
 
 ### 1. 设置面板视觉层级与微晶工业设计升维 (`activity_main.xml`, `item_instance_row.xml`, `MainActivity.kt`)
