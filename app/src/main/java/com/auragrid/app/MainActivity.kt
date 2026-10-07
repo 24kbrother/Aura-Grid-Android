@@ -32,6 +32,9 @@ import androidx.appcompat.app.AppCompatActivity
 import com.auragrid.app.databinding.ActivityMainBinding
 import com.google.firebase.messaging.FirebaseMessaging
 import org.json.JSONObject
+import org.json.JSONArray
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.security.MessageDigest
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
@@ -85,6 +88,74 @@ class MainActivity : AppCompatActivity() {
 
     private var uploadMessage: android.webkit.ValueCallback<Array<Uri>>? = null
     private val FILECHOOSER_RESULTCODE = 10001
+
+    private val bridgePolyfillJs = """
+        (function() {
+            try {
+                if (!window.__auraCallbacks) {
+                    window.__auraCallbacks = {};
+                }
+
+                function dispatchToAndroid(action, payload, callbackId) {
+                    payload = payload || {};
+                    callbackId = callbackId || ('cb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
+                    return new Promise(function(resolve, reject) {
+                        window.__auraCallbacks[callbackId] = function(res) {
+                            delete window.__auraCallbacks[callbackId];
+                            if (res && res.error) {
+                                reject(res);
+                            } else {
+                                resolve(res);
+                            }
+                        };
+                        try {
+                            var messageObj = Object.assign({}, payload, { action: action, callbackId: callbackId });
+                            var jsonStr = JSON.stringify(messageObj);
+                            if (window.AuraNative && typeof window.AuraNative.postMessage === 'function') {
+                                window.AuraNative.postMessage(jsonStr);
+                            } else {
+                                console.error('[AuraGrid-Android] AuraNative.postMessage unavailable');
+                                delete window.__auraCallbacks[callbackId];
+                                reject(new Error('AuraNative.postMessage unavailable'));
+                            }
+                        } catch (err) {
+                            console.error('[AuraGrid-Android] Failed to post message to native:', err);
+                            delete window.__auraCallbacks[callbackId];
+                            reject(err);
+                        }
+                    });
+                }
+
+                // 1. Polyfill window.webkit.messageHandlers.AuraNative.postMessage
+                if (!window.webkit) window.webkit = {};
+                if (!window.webkit.messageHandlers) window.webkit.messageHandlers = {};
+                if (!window.webkit.messageHandlers.AuraNative) {
+                    window.webkit.messageHandlers.AuraNative = {
+                        postMessage: function(msg) {
+                            var action = msg ? msg.action : '';
+                            var callbackId = (msg && msg.callbackId) ? msg.callbackId : ('cb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
+                            return dispatchToAndroid(action, msg, callbackId);
+                        }
+                    };
+                }
+
+                // 2. Attach postToNative to window.AuraNative if missing
+                if (window.AuraNative) {
+                    try {
+                        if (typeof window.AuraNative.postToNative !== 'function') {
+                            window.AuraNative.postToNative = function(action, payload) {
+                                return dispatchToAndroid(action, payload);
+                            };
+                        }
+                    } catch (e) {
+                        console.warn('[AuraGrid-Android] Could not attach postToNative to AuraNative:', e);
+                    }
+                }
+            } catch (e) {
+                console.error('[AuraGrid-Android] Bridge polyfill error:', e);
+            }
+        })();
+    """.trimIndent()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -687,6 +758,16 @@ class MainActivity : AppCompatActivity() {
         // Inject the secure cross-platform bridge object
         binding.webView.addJavascriptInterface(AuraNativeBridge(this), "AuraNative")
 
+        // Register Document Start script for instant bridge polyfill availability across all frames
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try {
+                WebViewCompat.addDocumentStartJavaScript(binding.webView, bridgePolyfillJs, setOf("*"))
+                Log.i("MainActivity", "Bridge polyfill registered via DOCUMENT_START_SCRIPT.")
+            } catch (e: Exception) {
+                Log.w("MainActivity", "DOCUMENT_START_SCRIPT registration failed: ${e.message}")
+            }
+        }
+
         // Support file downloads (Export full configuration backup)
         binding.webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
             shareOrSaveDownloadedFile(url, mimetype, contentDisposition)
@@ -719,8 +800,16 @@ class MainActivity : AppCompatActivity() {
 
         // Hook system client events
         binding.webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                // Reinforce bridge polyfill injection at page start
+                view?.evaluateJavascript(bridgePolyfillJs, null)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                // Reinforce bridge polyfill injection at page finish
+                view?.evaluateJavascript(bridgePolyfillJs, null)
                 recoveryHandler.removeCallbacks(loadTimeoutRunnable)
                 if (!isErrorState) {
                     val isDemo = sharedPreferences.getBoolean("is_demo_mode", false)
@@ -2726,6 +2815,121 @@ class MainActivity : AppCompatActivity() {
                         binding.webView.evaluateJavascript(jsScript, null)
                     }
                 }
+            }
+        }
+
+        /**
+         * Direct invoke to open Android native settings overlay.
+         */
+        @JavascriptInterface
+        fun openSettings() {
+            Log.i("AuraJSBridge", "Direct openSettings invoked from web.")
+            runOnUiThread {
+                toggleSettingsOverlay(true)
+            }
+        }
+
+        /**
+         * Dispatches unified JSON payload messages from web frontend (aligning with iOS WKScriptMessageHandler).
+         */
+        @JavascriptInterface
+        fun postMessage(messageJson: String) {
+            try {
+                val json = JSONObject(messageJson)
+                val action = json.optString("action", "")
+                val callbackId = json.optString("callbackId", "")
+                Log.i("AuraJSBridge", "Received postMessage: action=$action, callbackId=$callbackId")
+
+                when (action) {
+                    "openSettings" -> {
+                        runOnUiThread {
+                            toggleSettingsOverlay(true)
+                        }
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "getHardwareFingerprint" -> {
+                        val hwid = getHardwareFingerprint()
+                        respondCallback(callbackId, JSONObject().put("hwid", hwid))
+                    }
+                    "getDeviceInfo" -> {
+                        val info = JSONObject(getDeviceInfo())
+                        respondCallback(callbackId, info)
+                    }
+                    "getAppVersion" -> {
+                        respondCallback(callbackId, JSONObject().put("version", getAppVersion()))
+                    }
+                    "getAppMode" -> {
+                        respondCallback(callbackId, JSONObject().put("mode", getAppMode()))
+                    }
+                    "getPushToken" -> {
+                        val token = getPushToken()
+                        respondCallback(callbackId, JSONObject().put("token", token).put("platform", "fcm"))
+                    }
+                    "playAlertSound" -> {
+                        val severity = json.optString("severity", "INFO")
+                        playAlertSound(severity)
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "acknowledgeAlert" -> {
+                        val alertId = json.optString("alertId", "")
+                        if (alertId.isNotEmpty()) {
+                            acknowledgeAlert(alertId)
+                        }
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "startUpgrade" -> {
+                        val downloadUrl = json.optString("downloadUrl", "")
+                        if (downloadUrl.isNotEmpty()) {
+                            startUpgrade(downloadUrl)
+                        }
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "syncServerConfig" -> {
+                        val wanUrlStr = json.optString("wanURL", json.optString("wanUrl", ""))
+                        if (wanUrlStr.isNotEmpty()) {
+                            syncServerConfig(wanUrlStr)
+                        }
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "requestSilentReAuth" -> {
+                        requestSilentReAuth(callbackId)
+                    }
+                    "clearStoredToken" -> {
+                        clearStoredToken()
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "getNotificationHistory" -> {
+                        respondCallback(callbackId, JSONObject().put("success", true).put("items", JSONArray()))
+                    }
+                    "clearNotificationHistory", "deleteNotificationItem" -> {
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    else -> {
+                        Log.w("AuraJSBridge", "Unhandled postMessage action: $action")
+                        respondCallback(callbackId, JSONObject().put("success", false).put("reason", "unhandled_action"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("AuraJSBridge", "Error processing postMessage: ${e.message}", e)
+            }
+        }
+
+        private fun respondCallback(callbackId: String, data: JSONObject) {
+            if (callbackId.isEmpty()) return
+            val js = """
+                (function() {
+                    try {
+                        if (window.__auraCallbacks && window.__auraCallbacks['$callbackId']) {
+                            window.__auraCallbacks['$callbackId']($data);
+                            delete window.__auraCallbacks['$callbackId'];
+                        }
+                    } catch(e) {
+                        console.error('[AuraGrid-Android] Error in bridge callback:', e);
+                    }
+                })();
+            """.trimIndent()
+            runOnUiThread {
+                binding.webView.evaluateJavascript(js, null)
             }
         }
 

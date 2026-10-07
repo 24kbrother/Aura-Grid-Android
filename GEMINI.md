@@ -2,6 +2,26 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-10-08 协作记录 (竖屏设置页「服务器」点击直出原生配置菜单与双轨 JS Bridge Polyfill 落地)
+
+### 1. 竖屏端「服务器」菜单呼起痛点根治与双端协议对齐 (`MainActivity.kt`)
+- **痛点研判与病灶定位**：
+  - Pro 版本前端 `MobileSettingsTab.vue` 中，点击「服务器」按钮时首选检测 `native.postToNative` 函数，次选检测 `window.webkit.messageHandlers.AuraNative.postMessage`，均不匹配时回退提示“服务器地址请在大屏端系统设置中配置”；
+  - iOS 端因 WKWebView 天然具备 `window.webkit` 且运行时注入了 `postToNative`，可直接通过 `openSettings` 触发原生面板；而 Android 端此前未挂载 `postMessage` / `postToNative`，导致误落入兜底提示，只能依靠物理三指三击或左上角 5 连击呼出设置；
+- **全链路双轨 JS Bridge 兼容 Polyfill 注入**：
+  - **`DOCUMENT_START_SCRIPT` + `onPageStarted` + `onPageFinished` 三重生命周期防护**：通过 `WebViewCompat.addDocumentStartJavaScript` 在全量 Frame 运行前注入 Polyfill，并在页面加载各阶段自动强化兜底；
+  - **对齐 `window.webkit.messageHandlers.AuraNative.postMessage`**：实现 WebKit 命名空间模拟，将前端消息自动透明打包并通过 JSON 字符串分发至 Android Java 宿主；
+  - **对齐 `window.AuraNative.postToNative(action, payload)`**：返回标准 ES6 Promise，注册并回调 `window.__auraCallbacks`，保证前端异步调用闭环；
+- **Android `AuraNativeBridge` 原生动作分发硬化**：
+  - 接入 `@JavascriptInterface fun postMessage(messageJson: String)` 与 `@JavascriptInterface fun openSettings()`；
+  - 拦截 `openSettings` 动作并毫秒级调度 `runOnUiThread { toggleSettingsOverlay(true) }`，直接拉起黑曜石微晶实例列表与节点设置，彻底消除操作断层；
+  - 完整兼容 `getHardwareFingerprint`、`getDeviceInfo`、`getAppVersion`、`getAppMode`、`getPushToken`、`playAlertSound`、`acknowledgeAlert`、`startUpgrade`、`syncServerConfig`、`requestSilentReAuth` 与 `clearStoredToken` 等全量协议指令。
+
+### 2. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并验证通过：`BUILD SUCCESSFUL in 50s`，生成最终产物 `outputs/apk/AuraGrid-v2.2.5-20261008_003935.apk` (11M)。
+
+---
+
 ## 📅 2026-09-24 协作记录 (苹果 Bonjour / mDNS 毫秒级零感发现引擎 NsdManager 双轨加速落地)
 
 ### 1. Android 原生 NsdManager mDNS 服务发现落地 (`SubnetScanner.kt`)
