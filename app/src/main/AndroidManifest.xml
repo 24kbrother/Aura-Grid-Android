@@ -22,6 +22,16 @@
     <!-- Unknown Sources Install Permission for OTA Updates -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Audio Recording Permission for AI Butler Voice Input -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Speech Recognition queries declaration for Android 11+ (API 30+) -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"

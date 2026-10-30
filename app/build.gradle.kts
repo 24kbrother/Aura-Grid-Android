@@ -16,6 +16,11 @@ android {
         versionName = "2.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -63,6 +68,9 @@ dependencies {
 
     // Huawei HMS Push fallbacks
     implementation("com.huawei.hms:push:6.12.0.300")
+
+    // On-Device Streaming Speech Recognition (Sherpa-onnx)
+    implementation(files("libs/sherpa-onnx-2.0.1.aar"))
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

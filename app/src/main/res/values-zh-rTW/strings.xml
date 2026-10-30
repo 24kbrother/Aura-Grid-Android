@@ -14,7 +14,13 @@
     <string name="server_lan_url">局域網 LAN 伺服器地址</string>
     <string name="server_wan_url">廣域網 WAN 伺服器地址</string>
     <string name="username">操作員賬號</string>
+    <string name="username_placeholder">請輸入使用者名稱 (如 admin)</string>
+    <string name="username_helper">必填，用於連線空間中樞並進行鑑權</string>
     <string name="password">安全密鑰 / 密碼</string>
+    <string name="password_placeholder">請輸入登入密碼</string>
+    <string name="password_saved_hint">已安全儲存 (留空保持不變)</string>
+    <string name="password_helper">必填，空間中樞操作員登入憑據</string>
+    <string name="password_saved_helper">憑據已在本地加密儲存，如需修改請輸入新密碼</string>
     <string name="device_mode">終端運行模式</string>
     <string name="mode_kiosk">掛牆大螢幕模式</string>
     <string name="mode_companion">隨身伴侶模式</string>

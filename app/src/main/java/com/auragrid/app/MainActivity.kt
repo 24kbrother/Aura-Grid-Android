@@ -17,6 +17,10 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.view.HapticFeedbackConstants
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -58,6 +62,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var roamingManager: NetworkRoamingManager
     private lateinit var orchestrator: NotificationOrchestrator
     private lateinit var subnetScanner: SubnetScanner
+    private lateinit var voiceInputService: VoiceInputService
+    private var pendingVoicePermissionCallback: ((String) -> Unit)? = null
+    private val REQUEST_RECORD_AUDIO_CODE = 1002
     private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private var lanUrl = ""
@@ -204,6 +211,9 @@ class MainActivity : AppCompatActivity() {
         }
         orchestrator = NotificationOrchestrator(this)
         subnetScanner = SubnetScanner(this)
+        voiceInputService = VoiceInputService(this, sharedPreferences) { detail ->
+            dispatchVoiceEvent(detail)
+        }
 
         // 2. Configure hardware screen locking based on mode
         updateScreenLocking()
@@ -1197,7 +1207,20 @@ class MainActivity : AppCompatActivity() {
         binding.layoutLanUrl.hint = res.getString(R.string.server_lan_url)
         binding.layoutWanUrl.hint = res.getString(R.string.server_wan_url)
         binding.layoutUsername.hint = res.getString(R.string.username)
+        binding.layoutUsername.placeholderText = res.getString(R.string.username_placeholder)
+        binding.layoutUsername.helperText = res.getString(R.string.username_helper)
+
         binding.layoutPassword.hint = res.getString(R.string.password)
+        val currentPass = binding.inputPassword.text?.toString() ?: ""
+        val currentEditId = editingInstanceId
+        val hasSavedPass = currentEditId != null && !sharedPreferences.getString("auth_pass_$currentEditId", "").isNullOrEmpty()
+        if (hasSavedPass && currentPass.isEmpty()) {
+            binding.layoutPassword.placeholderText = res.getString(R.string.password_saved_hint)
+            binding.layoutPassword.helperText = res.getString(R.string.password_saved_helper)
+        } else {
+            binding.layoutPassword.placeholderText = res.getString(R.string.password_placeholder)
+            binding.layoutPassword.helperText = res.getString(R.string.password_helper)
+        }
         binding.btnAutoDiscoverLan.text = if (::subnetScanner.isInitialized && subnetScanner.isScanning()) res.getString(R.string.cancel) else res.getString(R.string.auto_discover_hub)
         
         binding.txtDeviceModeLabel.text = res.getString(R.string.device_mode)
@@ -2565,6 +2588,46 @@ class MainActivity : AppCompatActivity() {
         if (::roamingManager.isInitialized) {
             roamingManager.stopNetworkMonitoring()
         }
+        if (::voiceInputService.isInitialized) {
+            voiceInputService.destroy()
+        }
+    }
+
+    fun dispatchVoiceEvent(detail: JSONObject) {
+        runOnUiThread {
+            val js = """
+                (function() {
+                    try {
+                        window.dispatchEvent(new CustomEvent('aura:voice', {
+                            detail: $detail
+                        }));
+                    } catch(e) {
+                        console.error('[AuraGrid-Android] Error dispatching aura:voice event:', e);
+                    }
+                })();
+            """.trimIndent()
+            binding.webView.evaluateJavascript(js, null)
+        }
+    }
+
+    fun requestVoicePermission(callback: (String) -> Unit) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            callback("authorized")
+            return
+        }
+        pendingVoicePermissionCallback = callback
+        sharedPreferences.edit().putBoolean("voice_permission_requested", true).apply()
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO_CODE)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            val status = if (granted) "authorized" else "denied"
+            pendingVoicePermissionCallback?.invoke(status)
+            pendingVoicePermissionCallback = null
+        }
     }
 
     /**
@@ -2599,6 +2662,11 @@ class MainActivity : AppCompatActivity() {
                 put("isKioskMode", isKioskMode)
                 put("platform", "android")
                 put("isPhone", isPhone)
+                put("capabilities", org.json.JSONArray().apply {
+                    put("speech_recognition")
+                    put("haptic")
+                })
+                put("bridgeVersion", 3)
             }.toString()
         }
 
@@ -2846,6 +2914,69 @@ class MainActivity : AppCompatActivity() {
                         respondCallback(callbackId, JSONObject().put("success", true).put("items", JSONArray()))
                     }
                     "clearNotificationHistory", "deleteNotificationItem" -> {
+                        respondCallback(callbackId, JSONObject().put("success", true))
+                    }
+                    "getVoicePermission" -> {
+                        val status = if (::voiceInputService.isInitialized) {
+                            voiceInputService.getPermissionStatus()
+                        } else {
+                            "notDetermined"
+                        }
+                        respondCallback(callbackId, JSONObject().put("status", status))
+                    }
+                    "requestVoicePermission" -> {
+                        requestVoicePermission { status ->
+                            respondCallback(callbackId, JSONObject().put("status", status))
+                        }
+                    }
+                    "startVoiceInput" -> {
+                        if (::voiceInputService.isInitialized) {
+                            val locale = json.optString("locale", "zh-CN")
+                            val sessionId = json.optString("sessionId", java.util.UUID.randomUUID().toString())
+                            voiceInputService.start(locale, sessionId) { result ->
+                                respondCallback(callbackId, result)
+                            }
+                        } else {
+                            respondCallback(callbackId, JSONObject().apply {
+                                put("success", false)
+                                put("code", "AUDIO_BUSY")
+                            })
+                        }
+                    }
+                    "stopVoiceInput" -> {
+                        if (::voiceInputService.isInitialized) {
+                            val sessionId = json.optString("sessionId", "")
+                            val result = voiceInputService.stop(sessionId)
+                            respondCallback(callbackId, result)
+                        } else {
+                            respondCallback(callbackId, JSONObject().put("success", true))
+                        }
+                    }
+                    "cancelVoiceInput" -> {
+                        if (::voiceInputService.isInitialized) {
+                            val sessionId = json.optString("sessionId", "")
+                            val result = voiceInputService.cancel(sessionId)
+                            respondCallback(callbackId, result)
+                        } else {
+                            respondCallback(callbackId, JSONObject().put("success", true))
+                        }
+                    }
+                    "openAppSettings" -> {
+                        try {
+                            val appSettingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", packageName, null)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(appSettingsIntent)
+                            respondCallback(callbackId, JSONObject().put("success", true))
+                        } catch (e: Exception) {
+                            respondCallback(callbackId, JSONObject().put("success", false).put("reason", e.message))
+                        }
+                    }
+                    "triggerHaptic" -> {
+                        runOnUiThread {
+                            binding.root.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        }
                         respondCallback(callbackId, JSONObject().put("success", true))
                     }
                     else -> {
@@ -3196,6 +3327,9 @@ class MainActivity : AppCompatActivity() {
             binding.layoutInstancesList.visibility = View.GONE
             binding.layoutAddInstanceForm.visibility = View.VISIBLE
             
+            binding.layoutUsername.placeholderText = res.getString(R.string.username_placeholder)
+            binding.layoutUsername.helperText = res.getString(R.string.username_helper)
+
             if (!isEditing) {
                 // Clear inputs for clean form entry in Add Mode
                 binding.inputInstanceName.setText("")
@@ -3203,6 +3337,8 @@ class MainActivity : AppCompatActivity() {
                 binding.inputWanUrl.setText("")
                 binding.inputUsername.setText("admin")
                 binding.inputPassword.setText("")
+                binding.layoutPassword.placeholderText = res.getString(R.string.password_placeholder)
+                binding.layoutPassword.helperText = res.getString(R.string.password_helper)
                 binding.btnSaveSettings.text = res.getString(R.string.btn_verify_add)
 
                 // Clear previous discovery results and automatically start background scan
@@ -3211,6 +3347,15 @@ class MainActivity : AppCompatActivity() {
                 triggerSubnetScan()
             } else {
                 // In Edit Mode, keep populated inputs and show Save Changes
+                val editId = editingInstanceId
+                val savedPass = if (editId != null) sharedPreferences.getString("auth_pass_$editId", "") ?: "" else ""
+                if (savedPass.isNotEmpty()) {
+                    binding.layoutPassword.placeholderText = res.getString(R.string.password_saved_hint)
+                    binding.layoutPassword.helperText = res.getString(R.string.password_saved_helper)
+                } else {
+                    binding.layoutPassword.placeholderText = res.getString(R.string.password_placeholder)
+                    binding.layoutPassword.helperText = res.getString(R.string.password_helper)
+                }
                 binding.btnSaveSettings.text = res.getString(R.string.btn_save_changes)
                 binding.layoutDiscoveredHosts.visibility = View.GONE
                 binding.containerDiscoveredCards.removeAllViews()

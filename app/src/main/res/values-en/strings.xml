@@ -13,7 +13,13 @@
     <string name="server_lan_url">Local LAN Server URL</string>
     <string name="server_wan_url">Cloud WAN Server URL</string>
     <string name="username">Username</string>
+    <string name="username_placeholder">Enter hub username (e.g. admin)</string>
+    <string name="username_helper">Required for hub authentication</string>
     <string name="password">Password</string>
+    <string name="password_placeholder">Enter hub login password</string>
+    <string name="password_saved_hint">Securely saved (Leave empty to keep)</string>
+    <string name="password_helper">Required operator credentials</string>
+    <string name="password_saved_helper">Encrypted locally. Enter new password to change</string>
     <string name="device_mode">Device Work Mode</string>
     <string name="mode_kiosk">Wall Kiosk</string>
     <string name="mode_companion">Mobile Companion</string>

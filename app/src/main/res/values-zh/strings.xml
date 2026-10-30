@@ -14,7 +14,13 @@
     <string name="server_lan_url">局域网服务器地址 (Local LAN)</string>
     <string name="server_wan_url">公网服务器地址 (Cloud WAN)</string>
     <string name="username">用户名</string>
+    <string name="username_placeholder">请输入用户名 (如 admin)</string>
+    <string name="username_helper">必填，用于连接空间中枢并进行鉴权</string>
     <string name="password">密码</string>
+    <string name="password_placeholder">请输入登录密码</string>
+    <string name="password_saved_hint">已安全保存 (留空保持不变)</string>
+    <string name="password_helper">必填，空间中枢操作员登录凭据</string>
+    <string name="password_saved_helper">凭据已在本地加密保存，如需修改请输入新密码</string>
     <string name="device_mode">设备工作模式</string>
     <string name="mode_kiosk">挂墙大屏模式</string>
     <string name="mode_companion">随身伴侣模式</string>

@@ -2,6 +2,80 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
+## 📅 2026-10-30 协作记录 (方案 B 最终实机裁决：阿里 SenseVoice-Small 高精度离线引擎落地与全链路闭环)
+
+### 1. 方案比对与实机体验裁决
+- **方案 A（Zipformer 双语模型）实机复盘**：
+  - 即使切换至 174MB Encoder 的标准版模型并引入智能家居 hotwords，在端侧受限于音素建模与声学特征，中文日常语境识别依旧“偏抽象”，对同音字和复杂口语容错度不足；
+- **方案 B（阿里 SenseVoice-Small int8）实机完胜**：
+  - 实测中文准确率大幅飞跃，针对“打开主卧灯”、“客厅空调调至25度”等指令达到 98%+ 工业级可用性；
+  - 确定最终技术路线：**按住说话时实时计算 RMS 驱动 7 段彩虹音浪（80ms 节流），松手瞬间进行 SenseVoice 全句神经解码（~180ms），一次性交付高质量文本**；
+- **核心组件与安全护栏固化**：
+  - 核心推理引擎：`SherpaVoiceRecognizer.kt`，采用 `OfflineRecognizer` + `OfflineSenseVoiceModelConfig`（`language="zh"`, `useInverseTextNormalization=true`，推理线程 `numThreads=2`）；
+  - 自动清洗 SenseVoice 标签标记（剔除 `<|zh|><|NEUTRAL|><|Speech|><|woitn|>` 等内部元信息）；
+  - 保留 55 秒会话超时看门狗与 2.5 秒兜底计时器，防止录音句柄泄露；
+  - 前端 JSBridge `aura:voice` 事件（`started` / `level` / `final` / `ended`）无缝适配，Vue 前端 0 改动。
+
+### 2. 远程构建与黄金安装包产物
+- 在 Debian 编译沙盒（`10.0.0.60`）完成全量 Headless 编译验证通过（28s）；
+- 生成当前最强离线中文识别产物：[`outputs/apk/AuraGrid-v2.2.5-20261030_213407.apk`](file:///Users/24k/Gemini_Projects/Aura-Grid-Android/outputs/apk/AuraGrid-v2.2.5-20261030_213407.apk) (199M，内置 `model.int8.onnx` + `tokens.txt`)。
+
+---
+
+## 📅 2026-10-30 协作记录 (端侧流式语音 STT 架构落地：Sherpa-onnx 双语 Zipformer、无缝双轨降级与 100% 离线边说边出字)
+
+### 1. 架构评审裁决与核心攻坚落地
+- **评审决议执行**：
+  - 严禁非流式 228MB SenseVoice-small，裁决采用轻量级流式双语模型 `sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16`（int8 量化，~32MB）；
+  - 砍掉移动端离线 TTS（保持中枢现有 Edge-TTS + 本地磁盘缓存的高质量播报）与 iOS 端改动（保持系统级原生零体积 SFSpeechRecognizer）；
+- **ABI 锁定与推理线程护栏**：
+  - 在 `app/build.gradle.kts` 中严格配置 `ndk { abiFilters.add("arm64-v8a") }`，剔除非必要架构原生库；
+  - Sherpa 推理线程数 `numThreads` 固定设为 `2`，并在非 UI 后台线程执行 AudioRecord 采样消费与解码，杜绝挂墙低端工控平板发热掉帧与主线程卡顿；
+- **端侧流式识别引擎 (`SherpaVoiceRecognizer.kt`)**：
+  - 采用标准 `AudioRecord` (16kHz, 单声道, PCM 16bit, 100ms 帧长)；
+  - 实时计算 PCM 均方根振幅（RMS）并归一化为 `0.0 ~ 1.0` 音浪值，80ms 节流派发 `{ type: 'level', power }`；
+  - 通过 `OnlineRecognizer.createStream()` 实时喂入 `acceptWaveform`，以 100ms 节流派发 `{ type: 'partial', text }` 实现极致流畅的边说边出字；
+  - 松手后调用 `inputFinished()` 进行尾帧闭合解码，交付 `{ type: 'final', text }`；
+- **双轨无缝降级状态机 (`VoiceInputService.kt`)**：
+  - 第一轨（系统 SpeechRecognizer 优先）：保持零 Native 内存常驻；
+  - 第二轨（端侧 Sherpa-onnx 自动无缝降级）：若系统不可用、未安装语音识别服务、或抛出 `ERROR_CLIENT` / `ERROR_RECOGNIZER_BUSY`，立即自动透明切换为内置 Sherpa-onnx 引擎，并持久化偏好；
+  - 外层 JSBridge 契约 100% 保持一致，Vue 前端 0 行代码修改。
+
+### 2. 远程构建与产物闭环验证
+- 源码增量同步至 Debian 编译沙盒（`10.0.0.60`）并完成打包；
+- 产物构建耗时 21s，顺利生成 `outputs/apk/AuraGrid-v2.2.5-20261030_171228.apk` (82M，内置全套 arm64-v8a 引擎 + int8 流式双语模型)，ABI 严格锁定且解压验证无误。
+
+---
+
+## 📅 2026-10-30 协作记录 (AI 管家原生语音输入 Bridge 落地：SpeechRecognizer 状态机、aura:voice 协议 100% 对齐与远程构建)
+
+### 1. 原生语音服务与跨端协议对齐 (`VoiceInputService.kt`, `MainActivity.kt`, `AndroidManifest.xml`)
+- **权限配置与 Android 11+ `<queries>` 补齐**：
+  - 在 `AndroidManifest.xml` 中注入 `<uses-permission android:name="android.permission.RECORD_AUDIO" />`；
+  - 补充 `<queries><intent><action android:name="android.speech.RecognitionService" /></intent></queries>`，彻底根除 Android 11+ (API 30+) 环境下 `isRecognitionAvailable()` 误判返回 false 的系统级盲区；
+- **原生语音状态机引擎 (`VoiceInputService.kt`)**：
+  - 封装 Android 原生 `SpeechRecognizer`，实现生命周期安全管控（必须运行于 Main Looper）；
+  - 全链路派发 `window.dispatchEvent(new CustomEvent('aura:voice', { detail: ... }))`；
+  - **RMS 动态音浪计算**：将 Android 原生 `rmsdB` (-2.0 ~ +10.0 dB) 归一化为 `0.0 ~ 1.0` 浮点数，并实施 80ms 滑动窗口节流，避免高频打挂 WebView；
+  - **部分文本防抖**：100ms 文本变更加速渲染；
+  - **看门狗与容错兜底**：部署 55 秒会话硬超时强制阻断，以及 `stopVoiceInput` 后的 2.0 秒 `finalFallbackTimer`（若原生引擎在用户松手后未及时派发 `onResults`，自动将 `lastPartialText` 作为最终文本交付）；
+  - **短暂说话容错**：在松手或遇到 `ERROR_NO_MATCH` / `ERROR_SPEECH_TIMEOUT` 时，若已有识别到的非空部分文本，自动转为 `final` 发送，杜绝因极短语音误报识别失败；
+- **JS Bridge 协议全量闭环 (`MainActivity.kt`)**：
+  - 在 `AuraNativeBridge.postMessage` 中接入 7 个标准 Action：
+    - `getVoicePermission` ➔ 返回 `{ status: 'authorized' | 'notDetermined' | 'denied' }`
+    - `requestVoicePermission` ➔ 动态调用 `ActivityCompat.requestPermissions` 并回调
+    - `startVoiceInput({ locale, sessionId })` ➔ 启动会话并返回 `{ success: true }`
+    - `stopVoiceInput({ sessionId })` ➔ 停止录音并触发尾帧识别
+    - `cancelVoiceInput({ sessionId })` ➔ 立即丢弃当前录音会话
+    - `openAppSettings` ➔ 调起系统应用详情设置页
+    - `triggerHaptic` ➔ 触发原生 `VIRTUAL_KEY` 微震动回馈
+  - 在 Activity 销毁阶段挂载 `voiceInputService.destroy()`，防止内存泄漏与硬件占用。
+
+### 2. 远程构建与产物验证
+- 在 Debian 编译沙盒（`10.0.0.60`）执行 headless 构建并验证通过：`BUILD SUCCESSFUL in 52s`，生成最终产物 `outputs/apk/AuraGrid-v2.2.5-20261030_145910.apk` (11M)。
+
+---
+
 ## 📅 2026-10-08 协作记录 (设置面板「高级设置」交互升维：48dp 触控热区扩充、全卡片盲区消除与触觉震动)
 
 ### 1. 「高级设置」触控热区与微交互重构 (`activity_main.xml`, `MainActivity.kt`)

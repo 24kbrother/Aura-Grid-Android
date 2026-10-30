@@ -38,4 +38,8 @@ implementation_plan.md
 /outputs/
 backups/
 
+# Large ONNX models (managed by build server & automated download scripts)
+*.onnx
+app/src/main/assets/model/*.onnx
+
 
