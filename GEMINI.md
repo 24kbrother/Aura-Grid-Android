@@ -2,13 +2,13 @@
 
 > 本文档由协作助手自动生成，记录 Android 客户端项目关键变更、架构演进与排坑指南。
 
-## 📅 2026-10-30 协作记录 (方案 B 最终实机裁决：阿里 SenseVoice-Small 高精度离线引擎落地与全链路闭环)
+## 📅 2026-10-30 协作记录 (方案 B 最终实机裁决：阿里 SenseVoice-Small 高精度离线引擎落地、官网生产发布与全链路语音闭环)
 
 ### 1. 方案比对与实机体验裁决
 - **方案 A（Zipformer 双语模型）实机复盘**：
   - 即使切换至 174MB Encoder 的标准版模型并引入智能家居 hotwords，在端侧受限于音素建模与声学特征，中文日常语境识别依旧“偏抽象”，对同音字和复杂口语容错度不足；
 - **方案 B（阿里 SenseVoice-Small int8）实机完胜**：
-  - 实测中文准确率大幅飞跃，针对“打开主卧灯”、“客厅空调调至25度”等指令达到 98%+ 工业级可用性；
+  - 实测中文准确率大幅飞跃，针对“打开主卧灯”、“客厅空调调至25度”等指令达到 98%+ 工业级可用性，用户体验极高；
   - 确定最终技术路线：**按住说话时实时计算 RMS 驱动 7 段彩虹音浪（80ms 节流），松手瞬间进行 SenseVoice 全句神经解码（~180ms），一次性交付高质量文本**；
 - **核心组件与安全护栏固化**：
   - 核心推理引擎：`SherpaVoiceRecognizer.kt`，采用 `OfflineRecognizer` + `OfflineSenseVoiceModelConfig`（`language="zh"`, `useInverseTextNormalization=true`，推理线程 `numThreads=2`）；
@@ -16,9 +16,24 @@
   - 保留 55 秒会话超时看门狗与 2.5 秒兜底计时器，防止录音句柄泄露；
   - 前端 JSBridge `aura:voice` 事件（`started` / `level` / `final` / `ended`）无缝适配，Vue 前端 0 改动。
 
-### 2. 远程构建与黄金安装包产物
-- 在 Debian 编译沙盒（`10.0.0.60`）完成全量 Headless 编译验证通过（28s）；
-- 生成当前最强离线中文识别产物：[`outputs/apk/AuraGrid-v2.2.5-20261030_213407.apk`](file:///Users/24k/Gemini_Projects/Aura-Grid-Android/outputs/apk/AuraGrid-v2.2.5-20261030_213407.apk) (199M，内置 `model.int8.onnx` + `tokens.txt`)。
+### 2. 生产发布与云端同步 (Landui Production & GitHub)
+- **官网次生产服务器正式部署 (`auragrid.cn` / 蓝队云 103.47.80.166:25433)**：
+  - 产物：[`outputs/apk/AuraGrid-v2.2.5-20261030_213407.apk`](file:///Users/24k/Gemini_Projects/Aura-Grid-Android/outputs/apk/AuraGrid-v2.2.5-20261030_213407.apk) (199.1M)；
+  - 部署路径：`/www/aura-grid-web/download/auragrid-latest.apk`；
+  - SHA256 逐字节比对完全一致：`804397546c26e34605b8e95481f081bb143df615a7b86ce2d48795bdf63607e5`；
+  - 外网官方高速直链直达：`https://auragrid.cn/download/auragrid-latest.apk`；
+- **云端 Git 仓库代码轻量化同步 (`origin/gemini-i18n`)**：
+  - 配置 `.gitignore` 排除 200MB+ `*.onnx` 模型二进制，保证源码仓库符合 GitHub 单文件 100MB 限制；
+  - 提交 `e383735` 成功推送到云端远程分支。
+
+### 3. 全链路语音排坑指南 (Gotchas & Pitfalls)
+- **踩坑 1：Edge-TTS 6000ms 硬超时腰斩长语音，触发 5 分钟死锁熔断**：
+  - **病灶**：在 Pro 后端 `EdgeTtsProvider` 中硬编码了 6000ms 定时器且仅在 `Path:turn.end` 清除。当用户提问长文本（如“你是谁，介绍一下你自己”，回复 341 字需 ~7.6 秒合成）时，在 6013ms 被强制腰斩，连续 3 次超时导致 `TtsService` 熔断器锁定 5 分钟（返回 HTTP 503），安卓 WebView 播放器报错哑火，表现为“死活不出声音”；
+  - **治本**：改造为 10 秒滑动心跳超时（只要在接收音频 chunk 则不断续期）+ 动态字符安全上限（25s~90s），熔断锁定时长缩短为 30s 自愈；
+- **踩坑 2：安卓端与 iOS 端声线听感差异本质**：
+  - Edge-TTS 下发的是标准的 `24000Hz` 单声道 MP3；
+  - iOS CoreAudio 具备演播室级多相 Sinc 插值滤波器（平滑重采样至 48kHz）结合 iPhone 扬声器人声中频调音，听感圆润；
+  - 安卓 Chromium WebView 走系统 `AudioTrack` 混音层，部分国产手机 ROM（小米/华为/三星等）采用线性插值重采样或叠加了杜比音效，高频偏尖发脆。两者使用音色均确认是微软官方 `zh-CN-XiaoxiaoNeural`。
 
 ---
 
